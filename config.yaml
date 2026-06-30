@@ -15,7 +15,6 @@ rotacion:
 # Grupo 1: Esther + Fernando
 # Grupo 2: Adrián + Claudio + Alex
 # Grupo 3: Pablo + Robson + Sergio
-# (añade socorristas aquí cuando haya contrataciones)
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
   - { nombre: "Claudio Pazos González", grupo: 2 }
@@ -40,12 +39,12 @@ preferencias:
     - "Robson Ubaldo Rodríguez De Jesús"
     - "Sergio Amoedo Domínguez"
 
-  # Zodiac: solo Claudio y Alex (4 días seguidos por bloque)
+  # Zodiac: Claudio y Alex (4 días seguidos por bloque)
   socorrista_zodiac:
     - "Claudio Pazos González"
     - "Alejandro Panadeiros Covelo"
 
-  # Si G2 libra, zodiac lo cubren (Claudio/Alex no trabajan esos días)
+  # Si G2 libra, zodiac lo cubren Sergio/Robson
   socorrista_zodiac_reserva:
     - "Sergio Amoedo Domínguez"
     - "Robson Ubaldo Rodríguez De Jesús"
@@ -55,7 +54,7 @@ preferencias:
     - "Adrián Bouzón Amoedo"
     - "Pablo Novoa Fernández"
 
-  # Abrir puesto: nunca Claudio/Alex (van a zodiac)
+  # Abrir puesto: preferencia Sergio/Robson
   llave_cesantes_pool_g2:
     - "Sergio Amoedo Domínguez"
     - "Robson Ubaldo Rodríguez De Jesús"
@@ -64,13 +63,12 @@ preferencias:
     - "Sergio Amoedo Domínguez"
     - "Robson Ubaldo Rodríguez De Jesús"
 
-  # Torre: tampoco Claudio/Alex
   abrir_torre_pool:
     - "Sergio Amoedo Domínguez"
     - "Robson Ubaldo Rodríguez De Jesús"
     - "Fernando Franco Martins"
 
-  # Restricción: estos nombres solo pueden ir a socorrista_zodiac
-  solo_zodiac:
+  # Prefieren zodiac; pueden abrir puesto solo si no hay otro disponible
+  prefieren_zodiac:
     - "Claudio Pazos González"
     - "Alejandro Panadeiros Covelo"

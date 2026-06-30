@@ -3,20 +3,23 @@
 
 from __future__ import annotations
 
-import csv
 import html
 import json
 import sys
 from collections import defaultdict
-from datetime import date, datetime
-from pathlib import Path
 
-import yaml
-
-ROOT = Path(__file__).parent
-CONFIG_PATH = ROOT / "config.yaml"
-CSV_PATH = ROOT / "turnos_jul_sep_2026.csv"
-HTML_PATH = ROOT / "turnos.html"
+from turnos_common import (
+    CAMPOS_OCULTOS_HTML,
+    CONFIG_PATH,
+    CSV_PATH,
+    ETIQUETAS_VISTA,
+    HTML_PATH,
+    PUESTOS_ASIGNACION,
+    cargar_config,
+    cargar_filas_csv,
+    etiqueta_periodo,
+    parse_fecha,
+)
 
 MESES = (
     "",
@@ -37,40 +40,11 @@ DIAS_SEM = ("L", "M", "X", "J", "V", "S", "D")
 
 ICONO_LLAVE = '<span class="icono-llave" title="Lleva la llave">🔑</span>'
 
-ETIQUETAS = {
-    "socorrista_chapela": "Soc. Chapela",
-    "patron_chapela": "Pat. Chapela",
-    "patron_cesantes": "Pat. Cesantes",
-    "llave_cesantes": "Abrir puesto",
-    "socorrista_zodiac": "Zodiac",
-    "abrir_torre": "Torre",
-}
-
-CAMPOS_OCULTOS_HTML = {"llave_chapela"}
-
-ORDEN_CAMPOS = (
-    "socorrista_chapela",
-    "patron_chapela",
-    "patron_cesantes",
-    "llave_cesantes",
-    "socorrista_zodiac",
-    "abrir_torre",
-)
-
-
-def cargar_filas(csv_path: Path) -> list[dict[str, str]]:
-    with open(csv_path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def parse_fecha(s: str) -> date:
-    return datetime.strptime(s, "%Y-%m-%d").date()
-
 
 def etiqueta_campo(campo: str) -> str:
     if campo.startswith("cesantes"):
         return campo.replace("cesantes", "Cesantes ")
-    return ETIQUETAS.get(campo, campo.replace("_", " ").title())
+    return ETIQUETAS_VISTA.get(campo, campo.replace("_", " ").title())
 
 
 def filas_por_mes(filas: list[dict[str, str]]) -> dict[tuple[int, int], list[dict]]:
@@ -102,17 +76,16 @@ def puestos_dia(fila: dict[str, str]) -> list[dict[str, str | bool]]:
         tiene_llave = campo == "llave_cesantes" or (
             campo in ("socorrista_chapela", "patron_chapela") and valor == llave_chapela
         )
-        rol = etiqueta_campo(campo)
         puestos.append(
             {
                 "campo": campo,
-                "rol": rol,
+                "rol": etiqueta_campo(campo),
                 "persona": valor,
                 "tiene_llave": tiene_llave,
             }
         )
 
-    for campo in ORDEN_CAMPOS:
+    for campo in PUESTOS_ASIGNACION:
         if campo not in CAMPOS_OCULTOS_HTML:
             anadir(campo, fila.get(campo, "").strip())
 
@@ -133,19 +106,20 @@ def render_puesto(p: dict[str, str | bool]) -> str:
     )
 
 
-def generar_html(filas: list[dict[str, str]], titulo: str) -> str:
+def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> str:
     por_mes = filas_por_mes(filas)
     trabajadores = nombres_unicos(filas)
+    puestos_por_fecha = {fila["fecha"]: puestos_dia(fila) for fila in filas}
     datos = {
-        fila["fecha"]: [
+        fecha: [
             {
                 "campo": p["campo"],
                 "rol": p["rol"] + (" 🔑" if p.get("tiene_llave") else ""),
                 "persona": p["persona"],
             }
-            for p in puestos_dia(fila)
+            for p in puestos
         ]
-        for fila in filas
+        for fecha, puestos in puestos_por_fecha.items()
     }
     meses_nav = [
         {"y": y, "m": m, "label": f"{MESES[m]} {y}"}
@@ -158,13 +132,12 @@ def generar_html(filas: list[dict[str, str]], titulo: str) -> str:
         celdas: list[str] = []
         if filas_mes:
             primer = parse_fecha(filas_mes[0]["fecha"])
-            offset = (primer.weekday()) % 7
-            for _ in range(offset):
+            for _ in range(primer.weekday()):
                 celdas.append('<div class="dia vacio"></div>')
 
         for fila in filas_mes:
             d = parse_fecha(fila["fecha"])
-            puestos = puestos_dia(fila)
+            puestos = puestos_por_fecha[fila["fecha"]]
             personas = sorted({p["persona"] for p in puestos})
             data_personas = html.escape(json.dumps(personas, ensure_ascii=False))
             lineas = "".join(render_puesto(p) for p in puestos)
@@ -343,7 +316,7 @@ def generar_html(filas: list[dict[str, str]], titulo: str) -> str:
   <div class="wrap">
     <header class="page">
       <h1>{html.escape(titulo)}</h1>
-      <p>Julio – Septiembre 2026 · 4 días trabajo / 2 libres</p>
+      <p>{html.escape(subtitulo)} · 4 días trabajo / 2 libres</p>
     </header>
     <div class="controles">
       <label for="filtro">Ver turnos de:</label>
@@ -421,17 +394,13 @@ def main() -> int:
         print(f"No se encuentra {CSV_PATH}. Ejecuta primero generar_turnos.py", file=sys.stderr)
         return 1
 
-    filas = cargar_filas(CSV_PATH)
-    titulo = "Turnos playas 2026"
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
-        ini = cfg.get("periodo", {}).get("inicio", "")
-        fin = cfg.get("periodo", {}).get("fin", "")
-        if ini and fin:
-            titulo = f"Turnos playas {ini[:4]}"
+    filas = cargar_filas_csv()
+    cfg = cargar_config() if CONFIG_PATH.exists() else {}
+    anio = cfg.get("periodo", {}).get("inicio", "")[:4] or "2026"
+    titulo = f"Turnos playas {anio}"
+    subtitulo = etiqueta_periodo(cfg) if cfg else ""
 
-    HTML_PATH.write_text(generar_html(filas, titulo), encoding="utf-8")
+    HTML_PATH.write_text(generar_html(filas, titulo, subtitulo), encoding="utf-8")
     print(f"HTML generado: {HTML_PATH}")
     return 0
 
