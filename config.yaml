@@ -1,0 +1,76 @@
+# Configuración de turnos — playas jul-sep 2026
+# Edita aquí y ejecuta: python3 generar_turnos.py
+
+periodo:
+  inicio: "2026-07-01"
+  fin: "2026-09-30"
+
+# 4 días trabajan, 2 libran. 3 grupos desfasados.
+# Grupo 1 (Esther) desfase 4 → libra el 1 de julio.
+rotacion:
+  dias_trabajo: 4
+  dias_libres: 2
+  desfase_grupos: [4, 0, 2]  # grupo 1, 2, 3
+
+# Grupo 1: Esther + Fernando
+# Grupo 2: Adrián + Claudio + Alex
+# Grupo 3: Pablo + Robson + Sergio
+# (añade socorristas aquí cuando haya contrataciones)
+socorristas:
+  - { nombre: "Fernando Franco Martins", grupo: 1 }
+  - { nombre: "Claudio Pazos González", grupo: 2 }
+  - { nombre: "Alejandro Panadeiros Covelo", grupo: 2 }
+  - { nombre: "Robson Ubaldo Rodríguez De Jesús", grupo: 3 }
+  - { nombre: "Sergio Amoedo Domínguez", grupo: 3 }
+
+patrones:
+  - { nombre: "Esther Román Figueroa", grupo: 1 }
+  - { nombre: "Adrián Bouzón Amoedo", grupo: 2 }
+  - { nombre: "Pablo Novoa Fernández", grupo: 3 }
+
+preferencias:
+  patron_chapela:
+    - "Esther Román Figueroa"
+
+  pareja_chapela:
+    "Esther Román Figueroa": "Fernando Franco Martins"
+
+  # Cuando Esther libra, Robson cubre Chapela (4 días seguidos por bloque)
+  socorrista_chapela:
+    - "Robson Ubaldo Rodríguez De Jesús"
+    - "Sergio Amoedo Domínguez"
+
+  # Zodiac: solo Claudio y Alex (4 días seguidos por bloque)
+  socorrista_zodiac:
+    - "Claudio Pazos González"
+    - "Alejandro Panadeiros Covelo"
+
+  # Si G2 libra, zodiac lo cubren (Claudio/Alex no trabajan esos días)
+  socorrista_zodiac_reserva:
+    - "Sergio Amoedo Domínguez"
+    - "Robson Ubaldo Rodríguez De Jesús"
+
+  llave_chapela_patrones:
+    - "Esther Román Figueroa"
+    - "Adrián Bouzón Amoedo"
+    - "Pablo Novoa Fernández"
+
+  # Abrir puesto: nunca Claudio/Alex (van a zodiac)
+  llave_cesantes_pool_g2:
+    - "Sergio Amoedo Domínguez"
+    - "Robson Ubaldo Rodríguez De Jesús"
+
+  llave_cesantes_pool_g3:
+    - "Sergio Amoedo Domínguez"
+    - "Robson Ubaldo Rodríguez De Jesús"
+
+  # Torre: tampoco Claudio/Alex
+  abrir_torre_pool:
+    - "Sergio Amoedo Domínguez"
+    - "Robson Ubaldo Rodríguez De Jesús"
+    - "Fernando Franco Martins"
+
+  # Restricción: estos nombres solo pueden ir a socorrista_zodiac
+  solo_zodiac:
+    - "Claudio Pazos González"
+    - "Alejandro Panadeiros Covelo"
