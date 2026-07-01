@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -64,6 +64,27 @@ def cargar_config(path: Path | None = None) -> dict:
 def cargar_filas_csv(path: Path | None = None) -> list[dict[str, str]]:
     with open(path or CSV_PATH, encoding="utf-8") as f:
         return list(csv.DictReader(f))
+
+
+def filas_csv_por_fecha(path: Path | None = None) -> dict[str, dict[str, str]]:
+    return {f["fecha"]: dict(f) for f in cargar_filas_csv(path)}
+
+
+def fecha_congelacion_limite(cfg: dict, hoy: date | None = None) -> date | None:
+    """Última fecha (inclusive) que no se regenera; None = regenerar todo."""
+    cong = cfg.get("congelado") or {}
+    hoy = hoy or date.today()
+    limites: list[date] = []
+
+    if cong.get("pasado_automatico", True):
+        limites.append(hoy - timedelta(days=1))
+
+    if hasta := cong.get("hasta"):
+        limites.append(parse_fecha(hasta))
+
+    if not limites:
+        return None
+    return max(limites)
 
 
 def solo_nombre(nombre: str) -> str:

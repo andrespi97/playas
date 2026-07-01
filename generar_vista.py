@@ -315,6 +315,8 @@ def generar_html(
     .puesto[data-campo="socorrista_zodiac"] .rol {{ color: #1d4ed8; }}
     .puesto[data-campo^="cesantes"] {{ background: #f1f5f9; }}
     .puesto[data-campo^="cesantes"] .rol {{ color: var(--muted); }}
+    .puesto[data-persona^="Vacante"] {{ background: #fce7f3; border: 1px dashed #f472b6; }}
+    .puesto[data-persona^="Vacante"] .rol {{ color: #be185d; }}
     .dia.resaltado {{ border-color: var(--resalt-borde); background: var(--resalt); }}
     .dia.atenuado {{ opacity: 0.35; }}
     .puesto.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; }}
@@ -393,7 +395,8 @@ def generar_html(
       <span><strong>Abrir puesto</strong> · cesantes · 🔑</span>
       <span><strong>Zodiac</strong> · apertura puerto</span>
       <span><strong>Torre</strong></span>
-      <span><strong>Cesantes 2+</strong> · refuerzo</span>
+      <span><strong>Cesantes 2+</strong> · refuerzo / vacante</span>
+      <span><strong>Vacante</strong> · hueco cubrible por quien libra</span>
       <span><strong>Libre</strong> · descanso (rotación 4/2)</span>
     </div>
   </div>

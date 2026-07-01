@@ -5,6 +5,14 @@ periodo:
   inicio: "2026-07-01"
   fin: "2026-09-30"
 
+# Días que no se recalculan al ejecutar generar_turnos.py
+# - pasado_automatico: conserva filas anteriores a hoy (por defecto true)
+# - hasta: fija manualmente hasta qué fecha incluir (útil tras editar el CSV)
+# Edición manual: cambia turnos_jul_sep_2026.csv y sube congelado.hasta al último día editado
+congelado:
+  pasado_automatico: true
+  # hasta: "2026-07-15"
+
 # 4 días trabajan, 2 libran. 3 grupos desfasados.
 # Grupo 1 (Esther) desfase 4 → libra el 1 de julio.
 rotacion:
@@ -12,9 +20,9 @@ rotacion:
   dias_libres: 2
   desfase_grupos: [4, 0, 2]  # grupo 1, 2, 3
 
-# Grupo 1: Esther + Fernando
-# Grupo 2: Adrián + Claudio + Alex
-# Grupo 3: Pablo + Robson + Sergio
+# Grupo 1: Esther + Fernando + Vacante 1
+# Grupo 2: Adrián + Claudio + Alex + Vacante 2
+# Grupo 3: Robson + Sergio + Vacante 3 (hueco de Pablo, de baja)
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
   - { nombre: "Claudio Pazos González", grupo: 2 }
@@ -24,8 +32,16 @@ socorristas:
 
 patrones:
   - { nombre: "Esther Román Figueroa", grupo: 1 }
+  - { nombre: "Vacante 1", grupo: 1 }
   - { nombre: "Adrián Bouzón Amoedo", grupo: 2 }
-  - { nombre: "Pablo Novoa Fernández", grupo: 3 }
+  - { nombre: "Vacante 2", grupo: 2 }
+  - { nombre: "Vacante 3", grupo: 3 }
+
+# De baja: no entran en rotación; su hueco es la vacante del mismo grupo
+baja:
+  - nombre: "Pablo Novoa Fernández"
+    grupo: 3
+    vacante: "Vacante 3"
 
 preferencias:
   patron_chapela:
@@ -52,7 +68,6 @@ preferencias:
   llave_chapela_patrones:
     - "Esther Román Figueroa"
     - "Adrián Bouzón Amoedo"
-    - "Pablo Novoa Fernández"
 
   # Abrir puesto: preferencia Sergio/Robson
   llave_cesantes_pool_g2:

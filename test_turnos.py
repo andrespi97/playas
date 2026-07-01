@@ -12,6 +12,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
+from datetime import date
+
 from generar_turnos import (  # noqa: E402
     ErrorGeneracion,
     cargar_config_validada,
@@ -25,11 +27,17 @@ from generar_turnos import (  # noqa: E402
     validar_rotacion_4_2,
     validar_sin_duplicados,
 )
-from turnos_common import CSV_PATH, cargar_config, cargar_filas_csv, parse_fecha  # noqa: E402
+from turnos_common import (  # noqa: E402
+    CSV_PATH,
+    cargar_config,
+    cargar_filas_csv,
+    fecha_congelacion_limite,
+    parse_fecha,
+)
 
 
 def filas_csv() -> list[dict[str, str]]:
-    generar_csv(cargar_config_validada())
+    generar_csv(cargar_config_validada(), congelar=False)
     return cargar_filas_csv()
 
 
@@ -47,7 +55,7 @@ class TestSinDuplicados(unittest.TestCase):
             "socorrista_chapela": "Robson",
             "patron_chapela": "Adrián",
             "llave_chapela": "Adrián",
-            "patron_cesantes": "Pablo",
+            "patron_cesantes": "Vacante 3",
             "llave_cesantes": "Sergio",
             "socorrista_zodiac": "Claudio",
             "abrir_torre": "Claudio",
@@ -152,6 +160,42 @@ class TestPreferenciaZodiac(unittest.TestCase):
         fila = filas["2026-07-03"]
         self.assertIn(fila["llave_cesantes"], ("Claudio", "Alejandro"))
         self.assertTrue(fila["llave_cesantes"] != fila.get("socorrista_zodiac", ""))
+
+
+class TestCongelado(unittest.TestCase):
+    def test_fecha_limite_pasado_automatico(self) -> None:
+        cfg = {"congelado": {"pasado_automatico": True}}
+        self.assertEqual(
+            fecha_congelacion_limite(cfg, hoy=date(2026, 7, 15)),
+            date(2026, 7, 14),
+        )
+
+    def test_hasta_manual_extiende_congelado(self) -> None:
+        cfg = {"congelado": {"pasado_automatico": True, "hasta": "2026-08-01"}}
+        self.assertEqual(
+            fecha_congelacion_limite(cfg, hoy=date(2026, 7, 15)),
+            date(2026, 8, 1),
+        )
+
+    def test_regenerar_conserva_filas_congeladas(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        original = cargar_filas_csv()[0].copy()
+        original["socorrista_chapela"] = "EDITADO"
+
+        filas = cargar_filas_csv()
+        filas[0] = original
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+            import csv
+
+            writer = csv.DictWriter(f, fieldnames=original.keys())
+            writer.writeheader()
+            writer.writerows(filas)
+
+        generar_csv(cfg, congelar=True, hoy=date(2026, 7, 10), congelar_hasta=date(2026, 7, 1))
+        conservada = cargar_filas_csv()[0]
+        self.assertEqual(conservada["socorrista_chapela"], "EDITADO")
+        generar_csv(cfg, congelar=False)
 
 
 class TestConfig(unittest.TestCase):
