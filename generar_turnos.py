@@ -565,6 +565,32 @@ def construir_personas(cfg: dict) -> list[Persona]:
     return personas
 
 
+def nombres_plantilla(cfg: dict) -> list[str]:
+    return sorted(
+        {solo_nombre(p.nombre) for p in construir_personas(cfg) if not es_vacante(p)},
+        key=str.casefold,
+    )
+
+
+def libran_por_fecha(cfg: dict, fechas_iso: list[str]) -> dict[str, list[str]]:
+    """Quién está de descanso (rotación 4/2) cada día."""
+    personas = construir_personas(cfg)
+    rotacion = cfg["rotacion"]
+    inicio = parse_fecha(cfg["periodo"]["inicio"])
+    libres: dict[str, list[str]] = {}
+    for fecha_str in fechas_iso:
+        dia_idx = (parse_fecha(fecha_str) - inicio).days
+        libres[fecha_str] = sorted(
+            (
+                solo_nombre(p.nombre)
+                for p in personas
+                if not es_vacante(p) and not trabaja_en_dia(dia_idx, p.grupo, rotacion)
+            ),
+            key=str.casefold,
+        )
+    return libres
+
+
 def generar_csv(cfg: dict) -> tuple[Path, int]:
     inicio = parse_fecha(cfg["periodo"]["inicio"])
     fin = parse_fecha(cfg["periodo"]["fin"])

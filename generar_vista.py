@@ -8,6 +8,7 @@ import json
 import sys
 from collections import defaultdict
 
+from generar_turnos import libran_por_fecha, nombres_plantilla
 from turnos_common import (
     CAMPOS_OCULTOS_HTML,
     CONFIG_PATH,
@@ -106,10 +107,25 @@ def render_puesto(p: dict[str, str | bool]) -> str:
     )
 
 
-def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> str:
+def render_libre(nombre: str) -> str:
+    return (
+        f'<div class="libre" data-persona="{html.escape(nombre)}">'
+        f'<span class="etiq">Libre</span>'
+        f'<span class="nombre">{html.escape(nombre)}</span></div>'
+    )
+
+
+def generar_html(
+    filas: list[dict[str, str]],
+    titulo: str,
+    subtitulo: str,
+    cfg: dict,
+) -> str:
     por_mes = filas_por_mes(filas)
-    trabajadores = nombres_unicos(filas)
+    trabajadores = nombres_plantilla(cfg) if cfg else nombres_unicos(filas)
     puestos_por_fecha = {fila["fecha"]: puestos_dia(fila) for fila in filas}
+    fechas = [f["fecha"] for f in filas]
+    libran = libran_por_fecha(cfg, fechas) if cfg else {}
     datos = {
         fecha: [
             {
@@ -139,14 +155,18 @@ def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> st
             d = parse_fecha(fila["fecha"])
             puestos = puestos_por_fecha[fila["fecha"]]
             personas = sorted({p["persona"] for p in puestos})
+            libres = libran.get(fila["fecha"], [])
             data_personas = html.escape(json.dumps(personas, ensure_ascii=False))
+            data_libres = html.escape(json.dumps(libres, ensure_ascii=False))
             lineas = "".join(render_puesto(p) for p in puestos)
+            lineas_libres = "".join(render_libre(n) for n in libres)
             celdas.append(
                 f'<article class="dia" data-fecha="{fila["fecha"]}" '
-                f'data-personas=\'{data_personas}\'>'
+                f"data-personas='{data_personas}' data-libres='{data_libres}'>"
                 f'<header class="dia-cab"><span class="num">{d.day}</span>'
                 f'<span class="sem">{DIAS_SEM[d.weekday()]}</span></header>'
-                f'<div class="puestos">{lineas}</div></article>'
+                f'<div class="puestos">{lineas}</div>'
+                f'<div class="libres">{lineas_libres}</div></article>'
             )
 
         grid = "\n".join(celdas)
@@ -225,6 +245,12 @@ def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> st
       padding: 0.55rem 0.75rem; border: 1px solid var(--borde);
       border-radius: 8px; background: var(--tarjeta); font: inherit;
     }}
+    .check-libres {{
+      display: flex; align-items: center; gap: 0.4rem;
+      font-size: 0.85rem; font-weight: 600; color: var(--mar);
+      cursor: pointer; user-select: none;
+    }}
+    .check-libres input {{ width: 1rem; height: 1rem; cursor: pointer; }}
     .tabs-mes {{ display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }}
     .tab-mes {{
       padding: 0.5rem 1rem; border: 1px solid var(--borde);
@@ -273,6 +299,16 @@ def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> st
     .puesto .rol {{ color: var(--mar-claro); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }}
     .puesto .nombre {{ color: var(--texto); font-weight: 600; display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }}
     .icono-llave {{ font-size: 0.75em; line-height: 1; opacity: 0.9; }}
+    .puesto[data-campo="socorrista_chapela"],
+    .puesto[data-campo="patron_chapela"] {{
+      background: #ccfbf1; border: 1px solid #5eead4;
+    }}
+    .puesto[data-campo="socorrista_chapela"] .rol,
+    .puesto[data-campo="patron_chapela"] .rol {{ color: #0f766e; }}
+    .puesto[data-campo="patron_cesantes"] {{
+      background: #f1f5f9; border: 1px solid #cbd5e1;
+    }}
+    .puesto[data-campo="patron_cesantes"] .rol {{ color: var(--muted); }}
     .puesto[data-campo="llave_cesantes"] {{ background: #fef9c3; border: 1px solid #fde047; }}
     .puesto[data-campo="llave_cesantes"] .rol {{ color: #a16207; }}
     .puesto[data-campo="socorrista_zodiac"] {{ background: #dbeafe; border: 1px solid #93c5fd; }}
@@ -282,6 +318,25 @@ def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> st
     .dia.resaltado {{ border-color: var(--resalt-borde); background: var(--resalt); }}
     .dia.atenuado {{ opacity: 0.35; }}
     .puesto.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; }}
+    .libres {{
+      display: none; flex-direction: column; gap: 2px;
+      margin-top: 0.35rem; padding-top: 0.25rem;
+      border-top: 1px dashed var(--borde);
+    }}
+    body.mostrar-libres .libres {{ display: flex; }}
+    .libre {{
+      font-size: 0.58rem; line-height: 1.25; padding: 2px 4px;
+      border-radius: 4px; background: #f8fafc; border: 1px solid #e2e8f0;
+      display: flex; gap: 4px; align-items: baseline;
+    }}
+    .libre .etiq {{
+      color: var(--muted); font-weight: 600; text-transform: uppercase;
+      font-size: 0.9em; letter-spacing: 0.02em;
+    }}
+    .libre .nombre {{ color: var(--muted); font-weight: 600; }}
+    .libre.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; color: var(--texto); }}
+    .libre.resaltado .nombre, .libre.resaltado .etiq {{ color: var(--texto); }}
+    .dia.libre-resaltado {{ border-color: #94a3b8; }}
     .leyenda {{
       display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;
       margin-top: 1.5rem; padding: 1rem; background: var(--tarjeta);
@@ -324,25 +379,38 @@ def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> st
         <option value="">— Todos —</option>
         {opts}
       </select>
+      <label class="check-libres">
+        <input type="checkbox" id="mostrar-libres">
+        Mostrar quienes libran
+      </label>
     </div>
     <nav class="tabs-mes">{mes_btns}</nav>
     <div id="mi-resumen" class="mi-resumen"></div>
     {"".join(bloques_mes)}
     <div class="leyenda">
-      <span><strong>Chapela</strong> · playa Chapela · 🔑 lleva llave</span>
+      <span><strong>Chapela</strong> · playa Chapela (verde) · 🔑 lleva llave</span>
+      <span><strong>Cesantes</strong> · playa Cesantes (gris)</span>
       <span><strong>Abrir puesto</strong> · cesantes · 🔑</span>
       <span><strong>Zodiac</strong> · apertura puerto</span>
       <span><strong>Torre</strong></span>
       <span><strong>Cesantes 2+</strong> · refuerzo</span>
+      <span><strong>Libre</strong> · descanso (rotación 4/2)</span>
     </div>
   </div>
   <script>
     const DATOS = {json.dumps(datos, ensure_ascii=False)};
+    const LIBRAN = {json.dumps(libran, ensure_ascii=False)};
 
     const tabs = document.querySelectorAll(".tab-mes");
     const meses = document.querySelectorAll(".mes");
     const filtro = document.getElementById("filtro");
+    const checkLibres = document.getElementById("mostrar-libres");
     const resumen = document.getElementById("mi-resumen");
+
+    checkLibres.addEventListener("change", () => {{
+      document.body.classList.toggle("mostrar-libres", checkLibres.checked);
+      aplicarFiltro(filtro.value);
+    }});
 
     function activarMes(id) {{
       meses.forEach(m => m.classList.toggle("visible", m.id === id));
@@ -355,11 +423,18 @@ def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> st
     function aplicarFiltro(nombre) {{
       document.querySelectorAll(".dia:not(.vacio)").forEach(dia => {{
         const personas = JSON.parse(dia.dataset.personas || "[]");
-        const match = !nombre || personas.includes(nombre);
-        dia.classList.toggle("resaltado", !!nombre && match);
+        const libres = JSON.parse(dia.dataset.libres || "[]");
+        const trabaja = personas.includes(nombre);
+        const libra = libres.includes(nombre);
+        const match = !nombre || trabaja || libra;
+        dia.classList.toggle("resaltado", !!nombre && trabaja);
+        dia.classList.toggle("libre-resaltado", !!nombre && libra && !trabaja);
         dia.classList.toggle("atenuado", !!nombre && !match);
         dia.querySelectorAll(".puesto").forEach(p => {{
           p.classList.toggle("resaltado", !!nombre && p.dataset.persona === nombre);
+        }});
+        dia.querySelectorAll(".libre").forEach(l => {{
+          l.classList.toggle("resaltado", !!nombre && l.dataset.persona === nombre);
         }});
       }});
 
@@ -370,16 +445,23 @@ def generar_html(filas: list[dict[str, str]], titulo: str, subtitulo: str) -> st
       }}
 
       const lineas = [];
+      let diasTrabajo = 0;
+      let diasLibres = 0;
       for (const [fecha, puestos] of Object.entries(DATOS).sort()) {{
         const mios = puestos.filter(p => p.persona === nombre);
+        const libra = (LIBRAN[fecha] || []).includes(nombre);
+        const f = new Date(fecha + "T12:00:00");
+        const txt = f.toLocaleDateString("es-ES", {{ weekday: "short", day: "numeric", month: "short" }});
         if (mios.length) {{
-          const f = new Date(fecha + "T12:00:00");
-          const txt = f.toLocaleDateString("es-ES", {{ weekday: "short", day: "numeric", month: "short" }});
+          diasTrabajo++;
           const roles = mios.map(p => p.rol).join(", ");
           lineas.push(`<li><strong>${{txt}}</strong> — ${{roles}}</li>`);
+        }} else if (libra) {{
+          diasLibres++;
+          lineas.push(`<li><strong>${{txt}}</strong> — <em>Libre</em></li>`);
         }}
       }}
-      resumen.innerHTML = `<h3>${{nombre}} — ${{lineas.length}} días</h3><ul>${{lineas.join("")}}</ul>`;
+      resumen.innerHTML = `<h3>${{nombre}} — ${{diasTrabajo}} días asignados${{diasLibres ? `, ${{diasLibres}} libres` : ""}}</h3><ul>${{lineas.join("")}}</ul>`;
       resumen.classList.add("visible");
     }}
 
@@ -400,7 +482,7 @@ def main() -> int:
     titulo = f"Turnos playas {anio}"
     subtitulo = etiqueta_periodo(cfg) if cfg else ""
 
-    HTML_PATH.write_text(generar_html(filas, titulo, subtitulo), encoding="utf-8")
+    HTML_PATH.write_text(generar_html(filas, titulo, subtitulo, cfg), encoding="utf-8")
     print(f"HTML generado: {HTML_PATH}")
     return 0
 

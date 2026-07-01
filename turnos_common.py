@@ -42,8 +42,8 @@ CAMPOS_OBLIGATORIOS = (
 
 ETIQUETAS_VISTA = {
     "socorrista_chapela": "Soc. Chapela",
-    "patron_chapela": "Pat. Chapela",
-    "patron_cesantes": "Pat. Cesantes",
+    "patron_chapela": "Patrón Chapela",
+    "patron_cesantes": "Patrón Cesantes",
     "llave_cesantes": "Abrir puesto",
     "socorrista_zodiac": "Zodiac",
     "abrir_torre": "Torre",
