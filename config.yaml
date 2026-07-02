@@ -8,12 +8,13 @@ periodo:
 # Días que no se recalculan al ejecutar generar_turnos.py
 # - pasado_automatico: conserva hoy y días anteriores (por defecto true)
 # - hasta: fija manualmente hasta qué fecha incluir (útil tras editar el CSV)
-# Edición manual: cambia turnos_jul_sep_2026.csv y sube congelado.hasta al último día editado
+# Edición manual: cambia turnos_jul_sep_2026.csv; marca bloqueado=1 en días que no quieras recalcular
 # Publicar web: python3 generar_turnos.py copia turnos.html → docs/index.html; luego git push
 # Columnas admin (mismo CSV):
 #   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
 #   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
 #   horas_extras — Nombre:horas; Nombre:horas (solo manual)
+#   bloqueado    — 1 o x: la fila entera no se recalcula al regenerar
 congelado:
   pasado_automatico: true
   hasta: "2026-07-03"

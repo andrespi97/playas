@@ -36,11 +36,13 @@ COLUMNAS_CSV = (
     "cesantes",
 )
 
-# Solo edición manual en el CSV. El generador nunca las rellena: solo las copia
-# del CSV anterior (o dejan vacío si no había fila previa).
+# Solo edición manual en el CSV. El generador nunca las rellena (salvo copiar bloqueado).
+# vacaciones / horas_extras: se copian al regenerar días no bloqueados.
+# bloqueado: si está marcado, la fila entera no se recalcula (1, x, sí…).
 COLUMNAS_ADMIN = (
     "vacaciones",
     "horas_extras",
+    "bloqueado",
 )
 
 CAMPOS_OBLIGATORIOS = (
@@ -150,6 +152,13 @@ def parse_lista_nombres(celda: str) -> list[str]:
         for parte in celda.replace(",", ";").split(";")
         if parte.strip()
     ]
+
+
+def celda_bloqueada(celda: str) -> bool:
+    """True si la celda bloqueado marca la fila como no editable al regenerar."""
+    if not celda or not str(celda).strip():
+        return False
+    return str(celda).strip().casefold() in {"1", "x", "sí", "si", "yes", "y", "true", "bloqueado"}
 
 
 def format_lista_nombres(nombres: list[str]) -> str:

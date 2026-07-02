@@ -34,6 +34,7 @@ from turnos_common import (  # noqa: E402
     CSV_PATH,
     cargar_config,
     cargar_filas_csv,
+    celda_bloqueada,
     fecha_congelacion_limite,
     parse_fecha,
     parse_horas_extras,
@@ -250,6 +251,35 @@ class TestPreferenciaZodiac(unittest.TestCase):
 
 
 class TestAdministracion(CsvBackupMixin, unittest.TestCase):
+    def test_parse_bloqueado(self) -> None:
+        self.assertTrue(celda_bloqueada("1"))
+        self.assertTrue(celda_bloqueada("x"))
+        self.assertTrue(celda_bloqueada("Sí"))
+        self.assertFalse(celda_bloqueada(""))
+        self.assertFalse(celda_bloqueada("0"))
+
+    def test_bloqueado_preserva_fila_fuera_de_hasta(self) -> None:
+        cfg = cargar_config_validada()
+        cfg["congelado"] = {"pasado_automatico": False, "hasta": "2026-07-01"}
+        generar_csv(cfg, congelar=False)
+        filas = cargar_filas_csv()
+        for f in filas:
+            if f["fecha"] == "2026-07-15":
+                f["bloqueado"] = "1"
+                f["patron_chapela"] = "FIJO-15JUL"
+                break
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+            import csv
+
+            writer = csv.DictWriter(f, fieldnames=filas[0].keys())
+            writer.writeheader()
+            writer.writerows(filas)
+
+        generar_csv(cfg, congelar=True)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-15")
+        self.assertEqual(fila["patron_chapela"], "FIJO-15JUL")
+        self.assertEqual(fila["bloqueado"], "1")
+
     def test_jul_11_sin_vacaciones_esther(self) -> None:
         cfg = cargar_config_validada()
         generar_csv(cfg, congelar=False)

@@ -22,6 +22,7 @@ from turnos_common import (
     PUESTOS_ASIGNACION,
     columnas_csv_completas,
     cargar_config,
+    celda_bloqueada,
     fecha_congelacion_limite,
     filas_csv_por_fecha,
     format_lista_nombres,
@@ -738,7 +739,15 @@ def generar_csv(
         admin = admin_desde_existente(existentes, fecha_str)
         ausentes = nombres_completos_ausentes(admin["vacaciones"], personas)
 
-        if limite is not None and fecha <= limite and fecha_str in existentes:
+        congelada_rango = (
+            limite is not None and fecha <= limite and fecha_str in existentes
+        )
+        congelada_csv = (
+            congelar
+            and fecha_str in existentes
+            and celda_bloqueada(existentes[fecha_str].get("bloqueado", ""))
+        )
+        if congelada_rango or congelada_csv:
             fila = normalizar_fila_csv(existentes[fecha_str])
             fila["fecha"] = fecha_str
             n_congelados += 1
@@ -772,7 +781,13 @@ def generar_csv(
     for dia_idx, fila in enumerate(filas):
         fecha_str = fila["fecha"]
         congelada = fecha_str in fechas_congeladas
-        prefijo = f"{fecha_str} (congelado)" if congelada else fecha_str
+        bloqueada = celda_bloqueada(fila.get("bloqueado", ""))
+        if congelada and bloqueada:
+            prefijo = f"{fecha_str} (bloqueado)"
+        elif congelada:
+            prefijo = f"{fecha_str} (congelado)"
+        else:
+            prefijo = fecha_str
 
         if dup := validar_sin_duplicados(fila):
             errores.append(f"{prefijo}: {dup}")
@@ -807,7 +822,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--regenerar-todo",
         action="store_true",
-        help="Ignora filas congeladas y recalcula todo el periodo",
+        help="Ignora congelado y columna bloqueado; recalcula todo el periodo",
     )
     parser.add_argument(
         "--congelar-hasta",
