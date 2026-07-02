@@ -15,7 +15,7 @@ periodo:
 #   horas_extras — Nombre:horas; Nombre:horas (solo manual)
 congelado:
   pasado_automatico: true
-  hasta: "2026-07-02"
+  hasta: "2026-07-03"
 
 # 4 días trabajan, 2 libran. 3 grupos desfasados.
 # Grupo 1 (Esther) desfase 4 → libra el 1 de julio.
