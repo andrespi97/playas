@@ -658,7 +658,7 @@ def asignar_puestos(
         extras_pat.append(p)
         asignados.add(p.nombre)
 
-    extras_soc = [s for s in soc_confirmados if s.nombre not in asignados]
+    extras_soc = [s for s in socorristas if s.nombre not in asignados]
     nombres_extra = [solo_nombre(p.nombre) for p in extras_pat + extras_soc]
     fila["cesantes"] = format_lista_nombres(nombres_extra)
 

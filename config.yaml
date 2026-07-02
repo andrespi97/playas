@@ -9,6 +9,7 @@ periodo:
 # - pasado_automatico: conserva hoy y días anteriores (por defecto true)
 # - hasta: fija manualmente hasta qué fecha incluir (útil tras editar el CSV)
 # Edición manual: cambia turnos_jul_sep_2026.csv y sube congelado.hasta al último día editado
+# Publicar web: python3 generar_turnos.py copia turnos.html → docs/index.html; luego git push
 # Columnas admin (mismo CSV):
 #   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
 #   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
@@ -24,21 +25,23 @@ rotacion:
   dias_libres: 2
   desfase_grupos: [4, 0, 2]  # grupo 1, 2, 3
 
-# Grupo 1: Esther + Fernando + Vacante 1
-# Grupo 2: Adrián + Claudio + Alex + Vacante 2
-# Grupo 3: Robinson + Sergio + Vacante 3 (hueco de Pablo, de baja)
+# Grupo 1: Esther (pat) + Fernando + Vacante 1
+# Grupo 2: Adrián (pat) + Claudio + Alex + Vacante 2
+# Grupo 3: Vacante 3 (pat, hueco Pablo) + Robinson + Sergio + Vacante 4
+# Plantilla: 8 socorristas + 3 patrones = 11
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
+  - { nombre: "Vacante 1", grupo: 1 }
   - { nombre: "Claudio Pazos González", grupo: 2 }
   - { nombre: "Alejandro Panadeiros Covelo", grupo: 2 }
+  - { nombre: "Vacante 2", grupo: 2 }
   - { nombre: "Robinson Ubaldo Rodríguez De Jesús", grupo: 3 }
   - { nombre: "Sergio Amoedo Domínguez", grupo: 3 }
+  - { nombre: "Vacante 4", grupo: 3 }
 
 patrones:
   - { nombre: "Esther Román Figueroa", grupo: 1 }
-  - { nombre: "Vacante 1", grupo: 1 }
   - { nombre: "Adrián Bouzón Amoedo", grupo: 2 }
-  - { nombre: "Vacante 2", grupo: 2 }
   - { nombre: "Vacante 3", grupo: 3 }
 
 # De baja: no entran en rotación; su hueco es la vacante del mismo grupo

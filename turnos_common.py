@@ -12,6 +12,7 @@ ROOT = Path(__file__).parent
 CONFIG_PATH = ROOT / "config.yaml"
 CSV_PATH = ROOT / "turnos_jul_sep_2026.csv"
 HTML_PATH = ROOT / "turnos.html"
+PAGES_INDEX_PATH = ROOT / "docs" / "index.html"
 
 # Puestos que cuentan como asignación (llave_chapela es metadato)
 PUESTOS_ASIGNACION = (
@@ -182,6 +183,14 @@ def format_horas_extras(extras: dict[str, float]) -> str:
 
 def fila_vacia_admin() -> dict[str, str]:
     return {col: "" for col in COLUMNAS_ADMIN}
+
+
+def publicar_html_github_pages(origen: Path | None = None) -> Path:
+    """Copia el HTML generado a docs/index.html (GitHub Pages)."""
+    origen = origen or HTML_PATH
+    PAGES_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PAGES_INDEX_PATH.write_text(origen.read_text(encoding="utf-8"), encoding="utf-8")
+    return PAGES_INDEX_PATH
 
 
 def etiqueta_periodo(cfg: dict) -> str:

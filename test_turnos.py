@@ -46,6 +46,18 @@ def filas_csv() -> list[dict[str, str]]:
     return cargar_filas_csv()
 
 
+class CsvBackupMixin:
+    """Evita que tests que editan el CSV dejen datos basura (p. ej. vacaciones=Esther)."""
+
+    _csv_backup: bytes
+
+    def setUp(self) -> None:
+        self._csv_backup = CSV_PATH.read_bytes()
+
+    def tearDown(self) -> None:
+        CSV_PATH.write_bytes(self._csv_backup)
+
+
 class TestSinDuplicados(unittest.TestCase):
     def test_csv_sin_personas_repetidas_por_dia(self) -> None:
         filas = filas_csv()
@@ -126,6 +138,15 @@ class TestRotacion4x2(unittest.TestCase):
             parse_fecha(cfg["periodo"]["inicio"]),
         )
         self.assertIsNone(err, err)
+
+    def test_vacantes_socorrista_en_cesantes_si_trabajan(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        # 3/jul: G1 y G2 trabajan; Vacante 1 y Vacante 2 deben aparecer en cesantes
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-03")
+        cesantes = parse_lista_nombres(fila["cesantes"])
+        self.assertIn("Vacante 1", cesantes)
+        self.assertIn("Vacante 2", cesantes)
 
     def test_detecta_asignacion_en_dia_libre(self) -> None:
         cfg = cargar_config_validada()
@@ -220,16 +241,22 @@ class TestPreferenciaZodiac(unittest.TestCase):
 
     def test_cesantes_varios_en_una_columna(self) -> None:
         self.assertEqual(
-            parse_lista_nombres("Vacante 2; Vacante 3"),
-            ["Vacante 2", "Vacante 3"],
+            parse_lista_nombres("Vacante 2; Vacante 4"),
+            ["Vacante 2", "Vacante 4"],
         )
-        filas = filas_csv()
-        fila = next(f for f in filas if f["fecha"] == "2026-07-01")
-        self.assertTrue(parse_lista_nombres(fila["cesantes"]))
+        fila = next(f for f in filas_csv() if f["fecha"] == "2026-07-01")
         self.assertNotIn("cesantes2", fila)
+        self.assertIn("cesantes", fila)
 
 
-class TestAdministracion(unittest.TestCase):
+class TestAdministracion(CsvBackupMixin, unittest.TestCase):
+    def test_jul_11_sin_vacaciones_esther(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-11")
+        self.assertNotIn("Esther", parse_lista_nombres(fila.get("vacaciones", "")))
+        self.assertIn("Esther", nombres_asignados_fila(fila))
+
     def test_parse_vacaciones_y_extras(self) -> None:
         self.assertEqual(parse_lista_nombres("Esther; Fernando"), ["Esther", "Fernando"])
         self.assertEqual(parse_horas_extras("Esther:4; Adrián:6.5"), {"Esther": 4.0, "Adrián": 6.5})
@@ -320,7 +347,7 @@ class TestAdministracion(unittest.TestCase):
         self.assertIsNone(err)
 
 
-class TestCongelado(unittest.TestCase):
+class TestCongelado(CsvBackupMixin, unittest.TestCase):
     def test_fecha_limite_pasado_automatico(self) -> None:
         cfg = {"congelado": {"pasado_automatico": True}}
         self.assertEqual(
@@ -400,6 +427,17 @@ class TestCongelado(unittest.TestCase):
 
 
 class TestConfig(unittest.TestCase):
+    def test_plantilla_once_personas(self) -> None:
+        cfg = cargar_config_validada()
+        personas = construir_personas(cfg)
+        soc = [p for p in personas if p.rol == "socorrista"]
+        pat = [p for p in personas if p.rol == "patron"]
+        self.assertEqual(len(soc), 8)
+        self.assertEqual(len(pat), 3)
+        self.assertEqual(len(personas), 11)
+        vacantes = [p.nombre for p in personas if p.nombre.startswith("Vacante")]
+        self.assertEqual(sorted(vacantes), ["Vacante 1", "Vacante 2", "Vacante 3", "Vacante 4"])
+
     def test_config_actual_es_valida(self) -> None:
         self.assertEqual(validar_config(cargar_config_validada()), [])
 

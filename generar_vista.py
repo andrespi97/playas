@@ -16,6 +16,7 @@ from turnos_common import (
     CSV_PATH,
     ETIQUETAS_VISTA,
     HTML_PATH,
+    PAGES_INDEX_PATH,
     PUESTOS_ASIGNACION,
     cargar_config,
     cargar_filas_csv,
@@ -23,6 +24,7 @@ from turnos_common import (
     parse_fecha,
     parse_horas_extras,
     parse_lista_nombres,
+    publicar_html_github_pages,
 )
 
 MESES = (
@@ -576,7 +578,9 @@ def main() -> int:
     subtitulo = etiqueta_periodo(cfg) if cfg else ""
 
     HTML_PATH.write_text(generar_html(filas, titulo, subtitulo, cfg), encoding="utf-8")
+    pages = publicar_html_github_pages()
     print(f"HTML generado: {HTML_PATH}")
+    print(f"GitHub Pages: {pages}")
     return 0
 
 
