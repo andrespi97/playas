@@ -9,9 +9,13 @@ periodo:
 # - pasado_automatico: conserva hoy y días anteriores (por defecto true)
 # - hasta: fija manualmente hasta qué fecha incluir (útil tras editar el CSV)
 # Edición manual: cambia turnos_jul_sep_2026.csv y sube congelado.hasta al último día editado
+# Columnas admin (mismo CSV):
+#   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
+#   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
+#   horas_extras — Nombre:horas; Nombre:horas (solo manual)
 congelado:
   pasado_automatico: true
-  # hasta: "2026-07-15"
+  hasta: "2026-07-02"
 
 # 4 días trabajan, 2 libran. 3 grupos desfasados.
 # Grupo 1 (Esther) desfase 4 → libra el 1 de julio.
@@ -22,12 +26,12 @@ rotacion:
 
 # Grupo 1: Esther + Fernando + Vacante 1
 # Grupo 2: Adrián + Claudio + Alex + Vacante 2
-# Grupo 3: Robson + Sergio + Vacante 3 (hueco de Pablo, de baja)
+# Grupo 3: Robinson + Sergio + Vacante 3 (hueco de Pablo, de baja)
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
   - { nombre: "Claudio Pazos González", grupo: 2 }
   - { nombre: "Alejandro Panadeiros Covelo", grupo: 2 }
-  - { nombre: "Robson Ubaldo Rodríguez De Jesús", grupo: 3 }
+  - { nombre: "Robinson Ubaldo Rodríguez De Jesús", grupo: 3 }
   - { nombre: "Sergio Amoedo Domínguez", grupo: 3 }
 
 patrones:
@@ -50,9 +54,9 @@ preferencias:
   pareja_chapela:
     "Esther Román Figueroa": "Fernando Franco Martins"
 
-  # Cuando Esther libra, Robson cubre Chapela (4 días seguidos por bloque)
+  # Cuando Esther libra, Robinson cubre Chapela (4 días seguidos por bloque)
   socorrista_chapela:
-    - "Robson Ubaldo Rodríguez De Jesús"
+    - "Robinson Ubaldo Rodríguez De Jesús"
     - "Sergio Amoedo Domínguez"
 
   # Zodiac: Claudio y Alex (4 días seguidos por bloque)
@@ -60,27 +64,27 @@ preferencias:
     - "Claudio Pazos González"
     - "Alejandro Panadeiros Covelo"
 
-  # Si G2 libra, zodiac lo cubren Sergio/Robson
+  # Si G2 libra, zodiac lo cubren Sergio/Robinson
   socorrista_zodiac_reserva:
     - "Sergio Amoedo Domínguez"
-    - "Robson Ubaldo Rodríguez De Jesús"
+    - "Robinson Ubaldo Rodríguez De Jesús"
 
   llave_chapela_patrones:
     - "Esther Román Figueroa"
     - "Adrián Bouzón Amoedo"
 
-  # Abrir puesto: preferencia Sergio/Robson
+  # Abrir puesto: preferencia Sergio/Robinson
   llave_cesantes_pool_g2:
     - "Sergio Amoedo Domínguez"
-    - "Robson Ubaldo Rodríguez De Jesús"
+    - "Robinson Ubaldo Rodríguez De Jesús"
 
   llave_cesantes_pool_g3:
     - "Sergio Amoedo Domínguez"
-    - "Robson Ubaldo Rodríguez De Jesús"
+    - "Robinson Ubaldo Rodríguez De Jesús"
 
   abrir_torre_pool:
     - "Sergio Amoedo Domínguez"
-    - "Robson Ubaldo Rodríguez De Jesús"
+    - "Robinson Ubaldo Rodríguez De Jesús"
     - "Fernando Franco Martins"
 
   # Prefieren zodiac; pueden abrir puesto solo si no hay otro disponible

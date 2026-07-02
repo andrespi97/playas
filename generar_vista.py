@@ -11,6 +11,7 @@ from collections import defaultdict
 from generar_turnos import libran_por_fecha, nombres_plantilla
 from turnos_common import (
     CAMPOS_OCULTOS_HTML,
+    COLUMNAS_ADMIN,
     CONFIG_PATH,
     CSV_PATH,
     ETIQUETAS_VISTA,
@@ -20,6 +21,8 @@ from turnos_common import (
     cargar_filas_csv,
     etiqueta_periodo,
     parse_fecha,
+    parse_horas_extras,
+    parse_lista_nombres,
 )
 
 MESES = (
@@ -43,8 +46,6 @@ ICONO_LLAVE = '<span class="icono-llave" title="Lleva la llave">🔑</span>'
 
 
 def etiqueta_campo(campo: str) -> str:
-    if campo.startswith("cesantes"):
-        return campo.replace("cesantes", "Cesantes ")
     return ETIQUETAS_VISTA.get(campo, campo.replace("_", " ").title())
 
 
@@ -59,11 +60,19 @@ def filas_por_mes(filas: list[dict[str, str]]) -> dict[tuple[int, int], list[dic
 
 
 def nombres_unicos(filas: list[dict[str, str]]) -> list[str]:
+    omitir = frozenset({"fecha", *COLUMNAS_ADMIN})
     nombres: set[str] = set()
     for fila in filas:
         for k, v in fila.items():
-            if k != "fecha" and v.strip():
-                nombres.add(v.strip())
+            if k in omitir or not v.strip():
+                continue
+            if k == "horas_extras":
+                nombres.update(parse_horas_extras(v).keys())
+                continue
+            if k in ("vacaciones", "cesantes"):
+                nombres.update(parse_lista_nombres(v))
+                continue
+            nombres.add(v.strip())
     return sorted(nombres, key=str.casefold)
 
 
@@ -90,9 +99,8 @@ def puestos_dia(fila: dict[str, str]) -> list[dict[str, str | bool]]:
         if campo not in CAMPOS_OCULTOS_HTML:
             anadir(campo, fila.get(campo, "").strip())
 
-    for campo in sorted(fila.keys()):
-        if campo.startswith("cesantes"):
-            anadir(campo, fila.get(campo, "").strip())
+    for nombre in parse_lista_nombres(fila.get("cesantes", "")):
+        anadir("cesantes", nombre)
 
     return puestos
 
@@ -115,6 +123,24 @@ def render_libre(nombre: str) -> str:
     )
 
 
+def render_vacaciones(nombre: str) -> str:
+    return (
+        f'<div class="vacacion" data-persona="{html.escape(nombre)}">'
+        f'<span class="etiq">Vacaciones</span>'
+        f'<span class="nombre">{html.escape(nombre)}</span></div>'
+    )
+
+
+def render_extra(nombre: str, horas: float) -> str:
+    horas_txt = f"{horas:g} h"
+    return (
+        f'<div class="extra" data-persona="{html.escape(nombre)}" data-horas="{horas:g}">'
+        f'<span class="etiq">Extra</span>'
+        f'<span class="nombre">{html.escape(nombre)}</span>'
+        f'<span class="horas">{html.escape(horas_txt)}</span></div>'
+    )
+
+
 def generar_html(
     filas: list[dict[str, str]],
     titulo: str,
@@ -126,6 +152,15 @@ def generar_html(
     puestos_por_fecha = {fila["fecha"]: puestos_dia(fila) for fila in filas}
     fechas = [f["fecha"] for f in filas]
     libran = libran_por_fecha(cfg, fechas) if cfg else {}
+    vacaciones_por_fecha = {
+        fila["fecha"]: parse_lista_nombres(fila.get("vacaciones", "")) for fila in filas
+    }
+    extras_por_fecha: dict[str, dict[str, float]] = {}
+    for fila in filas:
+        try:
+            extras_por_fecha[fila["fecha"]] = parse_horas_extras(fila.get("horas_extras", ""))
+        except ValueError:
+            extras_por_fecha[fila["fecha"]] = {}
     datos = {
         fecha: [
             {
@@ -155,17 +190,28 @@ def generar_html(
             d = parse_fecha(fila["fecha"])
             puestos = puestos_por_fecha[fila["fecha"]]
             personas = sorted({p["persona"] for p in puestos})
-            libres = libran.get(fila["fecha"], [])
+            libres = [
+                n for n in libran.get(fila["fecha"], []) if n not in vacaciones_por_fecha[fila["fecha"]]
+            ]
+            vacaciones = vacaciones_por_fecha.get(fila["fecha"], [])
+            extras = extras_por_fecha.get(fila["fecha"], {})
             data_personas = html.escape(json.dumps(personas, ensure_ascii=False))
             data_libres = html.escape(json.dumps(libres, ensure_ascii=False))
+            data_vacaciones = html.escape(json.dumps(vacaciones, ensure_ascii=False))
+            data_extras = html.escape(json.dumps(extras, ensure_ascii=False))
             lineas = "".join(render_puesto(p) for p in puestos)
             lineas_libres = "".join(render_libre(n) for n in libres)
+            lineas_vac = "".join(render_vacaciones(n) for n in vacaciones)
+            lineas_extra = "".join(render_extra(n, h) for n, h in sorted(extras.items(), key=lambda p: p[0].casefold()))
             celdas.append(
                 f'<article class="dia" data-fecha="{fila["fecha"]}" '
-                f"data-personas='{data_personas}' data-libres='{data_libres}'>"
+                f"data-personas='{data_personas}' data-libres='{data_libres}' "
+                f"data-vacaciones='{data_vacaciones}' data-extras='{data_extras}'>"
                 f'<header class="dia-cab"><span class="num">{d.day}</span>'
                 f'<span class="sem">{DIAS_SEM[d.weekday()]}</span></header>'
                 f'<div class="puestos">{lineas}</div>'
+                f'<div class="vacaciones">{lineas_vac}</div>'
+                f'<div class="extras">{lineas_extra}</div>'
                 f'<div class="libres">{lineas_libres}</div></article>'
             )
 
@@ -313,8 +359,8 @@ def generar_html(
     .puesto[data-campo="llave_cesantes"] .rol {{ color: #a16207; }}
     .puesto[data-campo="socorrista_zodiac"] {{ background: #dbeafe; border: 1px solid #93c5fd; }}
     .puesto[data-campo="socorrista_zodiac"] .rol {{ color: #1d4ed8; }}
-    .puesto[data-campo^="cesantes"] {{ background: #f1f5f9; }}
-    .puesto[data-campo^="cesantes"] .rol {{ color: var(--muted); }}
+    .puesto[data-campo="cesantes"] {{ background: #f1f5f9; }}
+    .puesto[data-campo="cesantes"] .rol {{ color: var(--muted); }}
     .puesto[data-persona^="Vacante"] {{ background: #fce7f3; border: 1px dashed #f472b6; }}
     .puesto[data-persona^="Vacante"] .rol {{ color: #be185d; }}
     .dia.resaltado {{ border-color: var(--resalt-borde); background: var(--resalt); }}
@@ -338,6 +384,21 @@ def generar_html(
     .libre .nombre {{ color: var(--muted); font-weight: 600; }}
     .libre.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; color: var(--texto); }}
     .libre.resaltado .nombre, .libre.resaltado .etiq {{ color: var(--texto); }}
+    .vacaciones, .extras {{
+      display: flex; flex-direction: column; gap: 2px; margin-top: 0.25rem;
+    }}
+    .vacacion, .extra {{
+      font-size: 0.58rem; line-height: 1.25; padding: 2px 4px;
+      border-radius: 4px; display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap;
+    }}
+    .vacacion {{ background: #fff7ed; border: 1px solid #fdba74; }}
+    .vacacion .etiq {{ color: #c2410c; font-weight: 600; text-transform: uppercase; font-size: 0.9em; }}
+    .vacacion .nombre {{ color: #9a3412; font-weight: 600; }}
+    .extra {{ background: #ede9fe; border: 1px solid #c4b5fd; }}
+    .extra .etiq {{ color: #6d28d9; font-weight: 600; text-transform: uppercase; font-size: 0.9em; }}
+    .extra .nombre {{ color: #5b21b6; font-weight: 600; }}
+    .extra .horas {{ color: #6d28d9; font-weight: 700; margin-left: auto; font-size: 0.95em; }}
+    .vacacion.resaltado, .extra.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; }}
     .dia.libre-resaltado {{ border-color: #94a3b8; }}
     .leyenda {{
       display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;
@@ -395,14 +456,18 @@ def generar_html(
       <span><strong>Abrir puesto</strong> · cesantes · 🔑</span>
       <span><strong>Zodiac</strong> · apertura puerto</span>
       <span><strong>Torre</strong></span>
-      <span><strong>Cesantes 2+</strong> · refuerzo / vacante</span>
-      <span><strong>Vacante</strong> · hueco cubrible por quien libra</span>
+      <span><strong>Cesantes</strong> · refuerzo / vacante (varios con ;)</span>
+      <span><strong>Vacante</strong> · hueco sin cubrir (edita a mano o horas_extras)</span>
+      <span><strong>Vacaciones</strong> · no disponible (naranja)</span>
+      <span><strong>Extra</strong> · horas extras (morado)</span>
       <span><strong>Libre</strong> · descanso (rotación 4/2)</span>
     </div>
   </div>
   <script>
     const DATOS = {json.dumps(datos, ensure_ascii=False)};
     const LIBRAN = {json.dumps(libran, ensure_ascii=False)};
+    const VACACIONES = {json.dumps(vacaciones_por_fecha, ensure_ascii=False)};
+    const EXTRAS = {json.dumps(extras_por_fecha, ensure_ascii=False)};
 
     const tabs = document.querySelectorAll(".tab-mes");
     const meses = document.querySelectorAll(".mes");
@@ -427,17 +492,27 @@ def generar_html(
       document.querySelectorAll(".dia:not(.vacio)").forEach(dia => {{
         const personas = JSON.parse(dia.dataset.personas || "[]");
         const libres = JSON.parse(dia.dataset.libres || "[]");
+        const vacaciones = JSON.parse(dia.dataset.vacaciones || "[]");
+        const extras = JSON.parse(dia.dataset.extras || "{{}}");
         const trabaja = personas.includes(nombre);
         const libra = libres.includes(nombre);
-        const match = !nombre || trabaja || libra;
+        const deVacaciones = vacaciones.includes(nombre);
+        const tieneExtra = Object.prototype.hasOwnProperty.call(extras, nombre);
+        const match = !nombre || trabaja || libra || deVacaciones || tieneExtra;
         dia.classList.toggle("resaltado", !!nombre && trabaja);
-        dia.classList.toggle("libre-resaltado", !!nombre && libra && !trabaja);
+        dia.classList.toggle("libre-resaltado", !!nombre && libra && !trabaja && !deVacaciones);
         dia.classList.toggle("atenuado", !!nombre && !match);
         dia.querySelectorAll(".puesto").forEach(p => {{
           p.classList.toggle("resaltado", !!nombre && p.dataset.persona === nombre);
         }});
         dia.querySelectorAll(".libre").forEach(l => {{
           l.classList.toggle("resaltado", !!nombre && l.dataset.persona === nombre);
+        }});
+        dia.querySelectorAll(".vacacion").forEach(v => {{
+          v.classList.toggle("resaltado", !!nombre && v.dataset.persona === nombre);
+        }});
+        dia.querySelectorAll(".extra").forEach(e => {{
+          e.classList.toggle("resaltado", !!nombre && e.dataset.persona === nombre);
         }});
       }});
 
@@ -450,21 +525,36 @@ def generar_html(
       const lineas = [];
       let diasTrabajo = 0;
       let diasLibres = 0;
+      let diasVacaciones = 0;
+      let totalExtras = 0;
       for (const [fecha, puestos] of Object.entries(DATOS).sort()) {{
         const mios = puestos.filter(p => p.persona === nombre);
         const libra = (LIBRAN[fecha] || []).includes(nombre);
+        const deVacaciones = (VACACIONES[fecha] || []).includes(nombre);
+        const horasExtra = (EXTRAS[fecha] || {{}})[nombre] || 0;
         const f = new Date(fecha + "T12:00:00");
         const txt = f.toLocaleDateString("es-ES", {{ weekday: "short", day: "numeric", month: "short" }});
         if (mios.length) {{
           diasTrabajo++;
           const roles = mios.map(p => p.rol).join(", ");
-          lineas.push(`<li><strong>${{txt}}</strong> — ${{roles}}</li>`);
+          const extraTxt = horasExtra ? ` · ${{horasExtra}} h extra` : "";
+          lineas.push(`<li><strong>${{txt}}</strong> — ${{roles}}${{extraTxt}}</li>`);
+        }} else if (deVacaciones) {{
+          diasVacaciones++;
+          lineas.push(`<li><strong>${{txt}}</strong> — <em>Vacaciones</em></li>`);
         }} else if (libra) {{
           diasLibres++;
           lineas.push(`<li><strong>${{txt}}</strong> — <em>Libre</em></li>`);
+        }} else if (horasExtra) {{
+          lineas.push(`<li><strong>${{txt}}</strong> — <em>Extra</em> (${{horasExtra}} h)</li>`);
         }}
+        totalExtras += horasExtra;
       }}
-      resumen.innerHTML = `<h3>${{nombre}} — ${{diasTrabajo}} días asignados${{diasLibres ? `, ${{diasLibres}} libres` : ""}}</h3><ul>${{lineas.join("")}}</ul>`;
+      const partes = [`${{diasTrabajo}} días asignados`];
+      if (diasLibres) partes.push(`${{diasLibres}} libres`);
+      if (diasVacaciones) partes.push(`${{diasVacaciones}} vacaciones`);
+      if (totalExtras) partes.push(`${{totalExtras}} h extras`);
+      resumen.innerHTML = `<h3>${{nombre}} — ${{partes.join(", ")}}</h3><ul>${{lineas.join("")}}</ul>`;
       resumen.classList.add("visible");
     }}
 

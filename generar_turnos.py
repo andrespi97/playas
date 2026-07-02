@@ -16,14 +16,19 @@ from pathlib import Path
 
 from turnos_common import (
     CAMPOS_OBLIGATORIOS,
+    COLUMNAS_ADMIN,
     CONFIG_PATH,
     CSV_PATH,
+    PUESTOS_ASIGNACION,
     columnas_csv_completas,
-    columnas_puesto,
     cargar_config,
     fecha_congelacion_limite,
     filas_csv_por_fecha,
+    format_lista_nombres,
+    normalizar_fila_csv,
     parse_fecha,
+    parse_horas_extras,
+    parse_lista_nombres,
     sin_vacantes_roster,
     solo_nombre,
 )
@@ -289,52 +294,62 @@ def confirmados(candidatos: list[Persona]) -> list[Persona]:
     return [p for p in candidatos if not es_vacante(p)]
 
 
-def patrones_librando(
-    dia_idx: int,
-    personas: list[Persona],
-    rotacion: dict,
-    excluidos: set[str],
-) -> list[Persona]:
-    """Patrones en descanso que pueden cubrir una vacante."""
-    return [
-        p
-        for p in personas
-        if p.rol == "patron"
-        and not es_vacante(p)
-        and not trabaja_en_dia(dia_idx, p.grupo, rotacion)
-        and p.nombre not in excluidos
-    ]
+def nombres_completos_ausentes(vacaciones_csv: str, personas: list[Persona]) -> set[str]:
+    indice = indice_por_nombre_pila(personas)
+    return {
+        indice[n].nombre
+        for n in parse_lista_nombres(vacaciones_csv)
+        if n in indice
+    }
 
 
-def resolver_patron_asignado(
-    patron: Persona | None,
-    dia_idx: int,
-    personas: list[Persona],
-    rotacion: dict,
-    excluidos: set[str],
-    bloque: int,
-) -> Persona | None:
-    """Vacante → patrón que libra ese día; si no hay, queda Vacante N en el CSV."""
-    if not patron:
-        return None
-    if not es_vacante(patron):
-        return patron
-    roster = [p.nombre for p in personas if p.rol == "patron" and not es_vacante(p)]
-    cubridores = patrones_librando(dia_idx, personas, rotacion, excluidos)
-    if cubridor := elegir_fijo_por_bloque(bloque, roster, cubridores, set()):
-        return cubridor
-    return patron
+def admin_desde_existente(existentes: dict[str, dict[str, str]], fecha_str: str) -> dict[str, str]:
+    """Copia vacaciones/horas_extras del CSV previo. Nunca las inventa."""
+    prev = existentes.get(fecha_str, {})
+    return {col: prev.get(col, "") for col in COLUMNAS_ADMIN}
+
+
+def validar_administracion(fila: dict[str, str], personas: list[Persona]) -> str | None:
+    indice = indice_por_nombre_pila(personas)
+    vacaciones = parse_lista_nombres(fila.get("vacaciones", ""))
+    try:
+        extras = parse_horas_extras(fila.get("horas_extras", ""))
+    except ValueError as e:
+        return str(e)
+
+    for nombre in vacaciones:
+        if nombre not in indice:
+            return f"Vacaciones: nombre desconocido «{nombre}»"
+    for nombre, horas in extras.items():
+        if nombre not in indice:
+            return f"Horas extras: nombre desconocido «{nombre}»"
+        if horas <= 0:
+            return f"Horas extras: «{nombre}» debe ser > 0"
+
+    asignados = nombres_asignados_fila(fila)
+    for nombre in vacaciones:
+        if nombre in asignados:
+            return f"{nombre} en vacaciones y asignado el mismo día"
+
+    if solapados := set(vacaciones) & set(extras):
+        return f"{sorted(solapados)[0]} en vacaciones y horas extras"
+
+    return None
 
 
 def validar_sin_duplicados(fila: dict[str, str]) -> str | None:
     vistos: dict[str, str] = {}
-    for col in columnas_puesto(fila):
+    for col in PUESTOS_ASIGNACION:
         nombre = fila.get(col, "").strip()
         if not nombre:
             continue
         if nombre in vistos:
             return f"{nombre} repetido ({vistos[nombre]} y {col})"
         vistos[nombre] = col
+    for nombre in parse_lista_nombres(fila.get("cesantes", "")):
+        if nombre in vistos:
+            return f"{nombre} repetido ({vistos[nombre]} y cesantes)"
+        vistos[nombre] = "cesantes"
     return None
 
 
@@ -356,7 +371,9 @@ def validar_cobertura_extendida(fila: dict[str, str], socorristas_trabajando: in
 
 
 def nombres_asignados_fila(fila: dict[str, str]) -> set[str]:
-    return {fila.get(col, "").strip() for col in columnas_puesto(fila) if fila.get(col, "").strip()}
+    nombres = {fila.get(col, "").strip() for col in PUESTOS_ASIGNACION if fila.get(col, "").strip()}
+    nombres.update(parse_lista_nombres(fila.get("cesantes", "")))
+    return nombres
 
 
 def indice_por_nombre_pila(personas: list[Persona]) -> dict[str, Persona]:
@@ -382,25 +399,33 @@ def validar_rotacion_4_2(
     personas: list[Persona],
     rotacion: dict,
     inicio: date | None = None,
+    fechas_congeladas: set[str] | None = None,
 ) -> str | None:
     if not filas:
         return None
 
+    congeladas = fechas_congeladas or set()
     max_trabajo = rotacion["dias_trabajo"]
     indice = indice_por_nombre_pila(personas)
     if inicio is None:
         inicio = parse_fecha(filas[0]["fecha"])
 
     for fila in filas:
+        if fila["fecha"] in congeladas:
+            continue
         dia_idx = (parse_fecha(fila["fecha"]) - inicio).days
+        try:
+            extras_dia = set(parse_horas_extras(fila.get("horas_extras", "")).keys())
+        except ValueError as e:
+            return f"{fila['fecha']}: {e}"
         for nombre in nombres_asignados_fila(fila):
             persona = indice.get(nombre)
-            if not persona or persona.rol != "socorrista":
+            if not persona:
                 continue
-            if not trabaja_en_dia(dia_idx, persona.grupo, rotacion):
+            if not trabaja_en_dia(dia_idx, persona.grupo, rotacion) and nombre not in extras_dia:
                 return (
                     f"{nombre} asignado el {fila['fecha']} en día libre "
-                    f"(grupo {persona.grupo})"
+                    f"(grupo {persona.grupo}); añádelo a horas_extras si es extra"
                 )
 
     for nombre in indice:
@@ -408,11 +433,12 @@ def validar_rotacion_4_2(
         dias = [
             (parse_fecha(fila["fecha"]) - inicio).days
             for fila in filas
-            if nombre in nombres_asignados_fila(fila)
+            if fila["fecha"] not in congeladas and nombre in nombres_asignados_fila(fila)
         ]
         dias = [d for d in dias if trabaja_en_dia(d, persona.grupo, rotacion)]
-        if max_racha_dias(dias) > max_trabajo:
-            return f"{nombre}: {max_racha_dias(dias)} días seguidos asignados (máximo {max_trabajo})"
+        racha = max_racha_dias(dias)
+        if racha > max_trabajo:
+            return f"{nombre}: {racha} días seguidos asignados (máximo {max_trabajo})"
 
     return None
 
@@ -428,11 +454,20 @@ def personal_del_dia(
     return patrones, socorristas
 
 
-def contar_socorristas_trabajando(personas: list[Persona], dia_idx: int, rotacion: dict) -> int:
+def contar_socorristas_trabajando(
+    personas: list[Persona],
+    dia_idx: int,
+    rotacion: dict,
+    ausentes: set[str] | None = None,
+) -> int:
+    ausentes = ausentes or set()
     return sum(
         1
         for p in personas
-        if p.rol == "socorrista" and not es_vacante(p) and trabaja_en_dia(dia_idx, p.grupo, rotacion)
+        if p.rol == "socorrista"
+        and not es_vacante(p)
+        and p.nombre not in ausentes
+        and trabaja_en_dia(dia_idx, p.grupo, rotacion)
     )
 
 
@@ -482,13 +517,13 @@ def asignar_puestos(
     rotacion: dict,
     pools: PoolsPreferencias,
     roles_bloque: tuple[dict[int, str], dict[int, str]],
-    personas: list[Persona],
+    ausentes: set[str] | None = None,
 ) -> dict[str, str]:
     fila: dict[str, str] = {}
+    ausentes = ausentes or set()
+    patrones = [p for p in patrones if p.nombre not in ausentes]
+    socorristas = [p for p in socorristas if p.nombre not in ausentes]
 
-    if len(patrones) < 1:
-        fila["_error"] = f"Faltan patrones ({len(patrones)}/1 mínimo)"
-        return fila
     if len(socorristas) < 2:
         fila["_error"] = f"Faltan socorristas ({len(socorristas)}/2 mínimo)"
         return fila
@@ -499,30 +534,31 @@ def asignar_puestos(
     clave = clave_bloque_g2(dia_idx, bloque, rotacion)
     soc_confirmados = confirmados(socorristas)
 
-    pref_patron = pools.pref_patron_chapela
-    patron_pref = buscar_por_nombre(patrones, pref_patron[0]) if pref_patron else None
-    if patron_pref:
-        patron_chapela = patron_pref
-    else:
-        confirmados_pat = confirmados(patrones) or patrones
-        otros = [p for p in confirmados_pat if p.nombre in pools.llave_patrones] or confirmados_pat
-        patron_chapela = elegir_fijo_por_bloque(bloque_cal, pools.llave_patrones, otros, set()) or otros[0]
+    patron_chapela: Persona | None = None
+    patron_cesantes: Persona | None = None
 
-    otros_patrones = [p for p in patrones if p.nombre != patron_chapela.nombre]
-    confirmados_otros = confirmados(otros_patrones)
-    patron_cesantes = confirmados_otros[0] if confirmados_otros else (otros_patrones[0] if otros_patrones else None)
+    if patrones:
+        pref_patron = pools.pref_patron_chapela
+        patron_pref = buscar_por_nombre(patrones, pref_patron[0]) if pref_patron else None
+        if patron_pref:
+            patron_chapela = patron_pref
+        else:
+            confirmados_pat = confirmados(patrones) or patrones
+            otros = [p for p in confirmados_pat if p.nombre in pools.llave_patrones] or confirmados_pat
+            patron_chapela = elegir_fijo_por_bloque(bloque_cal, pools.llave_patrones, otros, set()) or (
+                otros[0] if otros else None
+            )
 
-    patron_chapela = resolver_patron_asignado(
-        patron_chapela, dia_idx, personas, rotacion, set(), bloque_cal
-    )
-    excl_patrones: set[str] = set()
-    if patron_chapela:
-        excl_patrones.add(patron_chapela.nombre)
-    patron_cesantes = resolver_patron_asignado(
-        patron_cesantes, dia_idx, personas, rotacion, excl_patrones, bloque_cal + 1
-    )
+        if patron_chapela:
+            otros_patrones = [p for p in patrones if p.nombre != patron_chapela.nombre]
+            confirmados_otros = confirmados(otros_patrones)
+            patron_cesantes = confirmados_otros[0] if confirmados_otros else (
+                otros_patrones[0] if otros_patrones else None
+            )
 
-    pareja = pools.pareja_chapela.get(patron_chapela.nombre)
+    pareja = None
+    if patron_chapela and not es_vacante(patron_chapela):
+        pareja = pools.pareja_chapela.get(patron_chapela.nombre)
     if pareja and (soc := buscar_por_nombre(soc_confirmados, pareja)):
         socorrista_chapela = soc
     else:
@@ -585,9 +621,13 @@ def asignar_puestos(
 
     fila["socorrista_chapela"] = solo_nombre(socorrista_chapela.nombre)
     fila["patron_chapela"] = solo_nombre(patron_chapela.nombre) if patron_chapela else ""
-    patrones_con_llave = confirmados([p for p in patrones if p.nombre in pools.llave_patrones]) or confirmados(patrones)
-    titular = elegir_fijo_por_bloque(bloque_cal, pools.llave_patrones, patrones_con_llave, set())
-    fila["llave_chapela"] = solo_nombre(titular.nombre if titular else (patron_chapela.nombre if patron_chapela else ""))
+    patrones_con_llave = confirmados([p for p in patrones if p.nombre in pools.llave_patrones]) or confirmados(
+        patrones
+    )
+    titular = elegir_fijo_por_bloque(bloque_cal, pools.llave_patrones, patrones_con_llave, set()) if patrones else None
+    fila["llave_chapela"] = solo_nombre(
+        titular.nombre if titular else (patron_chapela.nombre if patron_chapela and not es_vacante(patron_chapela) else "")
+    )
     fila["patron_cesantes"] = solo_nombre(patron_cesantes.nombre) if patron_cesantes else ""
     fila["llave_cesantes"] = solo_nombre(llave_cesantes.nombre) if llave_cesantes else ""
     fila["socorrista_zodiac"] = solo_nombre(socorrista_zodiac.nombre) if socorrista_zodiac else ""
@@ -615,21 +655,12 @@ def asignar_puestos(
     for p in patrones:
         if p.nombre in asignados:
             continue
-        resuelto = resolver_patron_asignado(
-            p, dia_idx, personas, rotacion, asignados, bloque_cal + len(extras_pat) + 2
-        )
-        if resuelto:
-            extras_pat.append(resuelto)
-            asignados.add(resuelto.nombre)
+        extras_pat.append(p)
+        asignados.add(p.nombre)
 
     extras_soc = [s for s in soc_confirmados if s.nombre not in asignados]
-    for i, extra in enumerate(extras_pat + extras_soc, start=2):
-        fila[f"cesantes{i}"] = solo_nombre(extra.nombre)
-
-    if dup := validar_sin_duplicados(fila):
-        fila["_error"] = dup
-    elif (cob := validar_cobertura_obligatoria(fila)):
-        fila["_error"] = cob
+    nombres_extra = [solo_nombre(p.nombre) for p in extras_pat + extras_soc]
+    fila["cesantes"] = format_lista_nombres(nombres_extra)
 
     return fila
 
@@ -675,7 +706,7 @@ def generar_csv(
     congelar: bool = True,
     hoy: date | None = None,
     congelar_hasta: date | None = None,
-) -> tuple[Path, int, int]:
+) -> tuple[Path, int, int, date | None]:
     inicio = parse_fecha(cfg["periodo"]["inicio"])
     fin = parse_fecha(cfg["periodo"]["fin"])
     fechas = rango_fechas(inicio, fin)
@@ -686,7 +717,9 @@ def generar_csv(
 
     limite: date | None = None
     existentes: dict[str, dict[str, str]] = {}
-    if congelar and CSV_PATH.exists():
+    if CSV_PATH.exists():
+        existentes = {k: normalizar_fila_csv(v) for k, v in filas_csv_por_fecha().items()}
+    if congelar:
         limites: list[date] = []
         if auto := fecha_congelacion_limite(cfg, hoy):
             limites.append(auto)
@@ -694,62 +727,77 @@ def generar_csv(
             limites.append(congelar_hasta)
         if limites:
             limite = max(limites)
-            existentes = filas_csv_por_fecha()
 
     filas: list[dict[str, str]] = []
-    max_cesantes = 0
     errores: list[str] = []
     n_congelados = 0
+    fechas_congeladas: set[str] = set()
 
     for dia_idx, fecha in enumerate(fechas):
         fecha_str = fecha.isoformat()
+        admin = admin_desde_existente(existentes, fecha_str)
+        ausentes = nombres_completos_ausentes(admin["vacaciones"], personas)
+
         if limite is not None and fecha <= limite and fecha_str in existentes:
-            fila = dict(existentes[fecha_str])
+            fila = normalizar_fila_csv(existentes[fecha_str])
             fila["fecha"] = fecha_str
             n_congelados += 1
+            fechas_congeladas.add(fecha_str)
         else:
             patrones, socorristas = personal_del_dia(personas, dia_idx, rotacion)
             asignacion = asignar_puestos(
-                patrones, socorristas, dia_idx, rotacion, pools, roles_bloque, personas
+                patrones,
+                socorristas,
+                dia_idx,
+                rotacion,
+                pools,
+                roles_bloque,
+                ausentes,
             )
 
             if "_error" in asignacion:
                 errores.append(f"{fecha_str}: {asignacion['_error']}")
                 asignacion = {k: v for k, v in asignacion.items() if k != "_error"}
 
-            fila = {"fecha": fecha_str, **asignacion}
+            fila = {"fecha": fecha_str, **asignacion, **admin}
 
-        max_cesantes = max(max_cesantes, len([k for k in fila if k.startswith("cesantes")]))
+        fila = normalizar_fila_csv(fila)
         filas.append(fila)
 
-    if rot_err := validar_rotacion_4_2(filas, personas, rotacion, inicio):
+    if rot_err := validar_rotacion_4_2(
+        filas, personas, rotacion, inicio, fechas_congeladas
+    ):
         errores.append(rot_err)
 
     for dia_idx, fila in enumerate(filas):
         fecha_str = fila["fecha"]
-        congelada = limite is not None and parse_fecha(fecha_str) <= limite
+        congelada = fecha_str in fechas_congeladas
         prefijo = f"{fecha_str} (congelado)" if congelada else fecha_str
 
         if dup := validar_sin_duplicados(fila):
             errores.append(f"{prefijo}: {dup}")
-        elif cob := validar_cobertura_obligatoria(fila):
-            errores.append(f"{prefijo}: {cob}")
+        elif adm := validar_administracion(fila, personas):
+            errores.append(f"{prefijo}: {adm}")
+        elif not congelada:
+            if cob := validar_cobertura_obligatoria(fila):
+                errores.append(f"{prefijo}: {cob}")
 
-        n_soc = contar_socorristas_trabajando(personas, dia_idx, rotacion)
-        if ext := validar_cobertura_extendida(fila, n_soc):
-            errores.append(f"{prefijo}: {ext}")
+            ausentes = nombres_completos_ausentes(fila.get("vacaciones", ""), personas)
+            n_soc = contar_socorristas_trabajando(personas, dia_idx, rotacion, ausentes)
+            if ext := validar_cobertura_extendida(fila, n_soc):
+                errores.append(f"{prefijo}: {ext}")
 
     if errores:
         raise ErrorGeneracion(errores)
 
-    columnas = columnas_csv_completas(max_cesantes)
+    columnas = columnas_csv_completas()
     with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=columnas, extrasaction="ignore")
         writer.writeheader()
         for fila in filas:
             writer.writerow(fila)
 
-    return CSV_PATH, len(filas), n_congelados
+    return CSV_PATH, len(filas), n_congelados, limite
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -782,7 +830,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         cfg = cargar_config_validada()
-        out, n, n_cong = generar_csv(
+        out, n, n_cong, limite = generar_csv(
             cfg,
             congelar=not args.regenerar_todo,
             congelar_hasta=congelar_hasta,
@@ -799,8 +847,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"CSV generado: {out} ({n} días)")
-    if n_cong:
-        print(f"  {n_cong} día(s) conservados del CSV (congelados)")
+    if args.regenerar_todo:
+        print("  Regeneración completa (sin congelar)")
+    elif limite:
+        print(f"  Congelado hasta {limite.isoformat()} ({n_cong} día(s) conservados del CSV)")
+        if n_cong == 0:
+            print("  ⚠ No se conservó ninguna fila: ¿existía CSV con esas fechas?", file=sys.stderr)
+    elif not args.regenerar_todo:
+        print("  Sin congelación: se recalculó todo el periodo")
+    if n_cong and n_cong != n:
+        print(f"  {n - n_cong} día(s) recalculados")
 
     try:
         from generar_vista import main as generar_vista_main

@@ -32,11 +32,18 @@ COLUMNAS_CSV = (
     "socorrista_zodiac",
     "llave_cesantes",
     "abrir_torre",
+    "cesantes",
+)
+
+# Solo edición manual en el CSV. El generador nunca las rellena: solo las copia
+# del CSV anterior (o dejan vacío si no había fila previa).
+COLUMNAS_ADMIN = (
+    "vacaciones",
+    "horas_extras",
 )
 
 CAMPOS_OBLIGATORIOS = (
     ("socorrista_chapela", "socorrista chapela"),
-    ("patron_chapela", "patrón chapela"),
     ("llave_cesantes", "abrir puesto"),
 )
 
@@ -47,13 +54,16 @@ ETIQUETAS_VISTA = {
     "llave_cesantes": "Abrir puesto",
     "socorrista_zodiac": "Zodiac",
     "abrir_torre": "Torre",
+    "cesantes": "Cesantes",
 }
 
 CAMPOS_OCULTOS_HTML = frozenset({"llave_chapela"})
 
 
-def parse_fecha(s: str) -> date:
-    return datetime.strptime(s, "%Y-%m-%d").date()
+def parse_fecha(s: str | date) -> date:
+    if isinstance(s, date):
+        return s
+    return datetime.strptime(str(s).strip(), "%Y-%m-%d").date()
 
 
 def cargar_config(path: Path | None = None) -> dict:
@@ -100,16 +110,78 @@ def sin_vacantes_roster(roster: list[str]) -> list[str]:
     return [n for n in roster if not n.startswith("Vacante")]
 
 
-def columnas_puesto(fila: dict[str, str]) -> list[str]:
-    return list(PUESTOS_ASIGNACION) + sorted(k for k in fila if k.startswith("cesantes"))
+def nombres_cesantes_fila(fila: dict[str, str]) -> list[str]:
+    if celda := fila.get("cesantes", "").strip():
+        return parse_lista_nombres(celda)
+    nombres: list[str] = []
+    for clave in sorted(fila.keys()):
+        if clave.startswith("cesantes") and clave != "cesantes" and (valor := fila.get(clave, "").strip()):
+            nombres.append(solo_nombre(valor))
+    return nombres
 
 
-def columnas_cesantes_extra(cantidad: int) -> list[str]:
-    return [f"cesantes{i}" for i in range(2, 2 + cantidad)]
+def normalizar_fila_csv(fila: dict[str, str]) -> dict[str, str]:
+    """Une cesantes2+ en cesantes y elimina columnas legacy."""
+    fila = dict(fila)
+    if not fila.get("cesantes", "").strip():
+        legacy = nombres_cesantes_fila(fila)
+        if legacy:
+            fila["cesantes"] = format_lista_nombres(legacy)
+    for clave in list(fila.keys()):
+        if clave.startswith("cesantes") and clave != "cesantes":
+            del fila[clave]
+    fila.setdefault("cesantes", "")
+    for col in COLUMNAS_ADMIN:
+        fila.setdefault(col, "")
+    return fila
 
 
-def columnas_csv_completas(max_cesantes: int) -> list[str]:
-    return list(COLUMNAS_CSV) + columnas_cesantes_extra(max_cesantes)
+def columnas_csv_completas() -> list[str]:
+    return list(COLUMNAS_CSV) + list(COLUMNAS_ADMIN)
+
+
+def parse_lista_nombres(celda: str) -> list[str]:
+    """Nombres separados por ; o , (solo nombre de pila)."""
+    if not celda or not celda.strip():
+        return []
+    return [
+        solo_nombre(parte.strip())
+        for parte in celda.replace(",", ";").split(";")
+        if parte.strip()
+    ]
+
+
+def format_lista_nombres(nombres: list[str]) -> str:
+    return "; ".join(sorted({n for n in nombres if n}, key=str.casefold))
+
+
+def parse_horas_extras(celda: str) -> dict[str, float]:
+    """Formato: Nombre:horas; Nombre:horas (horas decimales permitidas)."""
+    if not celda or not celda.strip():
+        return {}
+    resultado: dict[str, float] = {}
+    for parte in celda.replace(",", ";").split(";"):
+        parte = parte.strip()
+        if not parte:
+            continue
+        if ":" not in parte:
+            raise ValueError(f"horas_extras inválido: «{parte}» (use Nombre:horas)")
+        nombre, horas_txt = parte.split(":", 1)
+        nombre = solo_nombre(nombre.strip())
+        horas = float(horas_txt.strip().replace(",", "."))
+        resultado[nombre] = horas
+    return resultado
+
+
+def format_horas_extras(extras: dict[str, float]) -> str:
+    return "; ".join(
+        f"{nombre}:{horas:g}"
+        for nombre, horas in sorted(extras.items(), key=lambda par: par[0].casefold())
+    )
+
+
+def fila_vacia_admin() -> dict[str, str]:
+    return {col: "" for col in COLUMNAS_ADMIN}
 
 
 def etiqueta_periodo(cfg: dict) -> str:
