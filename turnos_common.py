@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -77,7 +77,7 @@ def fecha_congelacion_limite(cfg: dict, hoy: date | None = None) -> date | None:
     limites: list[date] = []
 
     if cong.get("pasado_automatico", True):
-        limites.append(hoy - timedelta(days=1))
+        limites.append(hoy)
 
     if hasta := cong.get("hasta"):
         limites.append(parse_fecha(hasta))

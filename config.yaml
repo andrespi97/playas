@@ -6,7 +6,7 @@ periodo:
   fin: "2026-09-30"
 
 # Días que no se recalculan al ejecutar generar_turnos.py
-# - pasado_automatico: conserva filas anteriores a hoy (por defecto true)
+# - pasado_automatico: conserva hoy y días anteriores (por defecto true)
 # - hasta: fija manualmente hasta qué fecha incluir (útil tras editar el CSV)
 # Edición manual: cambia turnos_jul_sep_2026.csv y sube congelado.hasta al último día editado
 congelado:

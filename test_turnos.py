@@ -167,7 +167,7 @@ class TestCongelado(unittest.TestCase):
         cfg = {"congelado": {"pasado_automatico": True}}
         self.assertEqual(
             fecha_congelacion_limite(cfg, hoy=date(2026, 7, 15)),
-            date(2026, 7, 14),
+            date(2026, 7, 15),
         )
 
     def test_hasta_manual_extiende_congelado(self) -> None:
