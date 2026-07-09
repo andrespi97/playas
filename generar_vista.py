@@ -25,6 +25,9 @@ from turnos_common import (
     parse_horas_extras,
     parse_lista_nombres,
     publicar_html_github_pages,
+    marcar_vacantes_cubiertas,
+    sin_vacantes_roster,
+    sustitutos_presentes_fila,
 )
 
 MESES = (
@@ -78,7 +81,7 @@ def nombres_unicos(filas: list[dict[str, str]]) -> list[str]:
     return sorted(nombres, key=str.casefold)
 
 
-def puestos_dia(fila: dict[str, str]) -> list[dict[str, str | bool]]:
+def puestos_dia(fila: dict[str, str], sustitutos: list[str] | None = None) -> list[dict[str, str | bool]]:
     llave_chapela = fila.get("llave_chapela", "").strip()
     puestos: list[dict[str, str | bool]] = []
 
@@ -104,16 +107,22 @@ def puestos_dia(fila: dict[str, str]) -> list[dict[str, str | bool]]:
     for nombre in parse_lista_nombres(fila.get("cesantes", "")):
         anadir("cesantes", nombre)
 
+    marcar_vacantes_cubiertas(puestos, sustitutos_presentes_fila(fila, sustitutos or []))
     return puestos
 
 
 def render_puesto(p: dict[str, str | bool]) -> str:
     llave = ICONO_LLAVE if p.get("tiene_llave") else ""
+    cubierta = ""
+    if p.get("vacante_cubierta"):
+        sustituto = html.escape(str(p.get("sustituto", "")))
+        cubierta = f'<span class="etiq-cubierta">cubierta · {sustituto}</span>' if sustituto else '<span class="etiq-cubierta">cubierta</span>'
+    clase_cubierta = " vacante-cubierta" if p.get("vacante_cubierta") else ""
     return (
-        f'<div class="puesto" data-campo="{html.escape(str(p["campo"]))}" '
+        f'<div class="puesto{clase_cubierta}" data-campo="{html.escape(str(p["campo"]))}" '
         f'data-persona="{html.escape(str(p["persona"]))}">'
         f'<span class="rol">{html.escape(str(p["rol"]))}</span>'
-        f'<span class="nombre">{html.escape(str(p["persona"]))}{llave}</span></div>'
+        f'<span class="nombre">{html.escape(str(p["persona"]))}{llave}</span>{cubierta}</div>'
     )
 
 
@@ -151,7 +160,8 @@ def generar_html(
 ) -> str:
     por_mes = filas_por_mes(filas)
     trabajadores = nombres_plantilla(cfg) if cfg else nombres_unicos(filas)
-    puestos_por_fecha = {fila["fecha"]: puestos_dia(fila) for fila in filas}
+    sustitutos = sin_vacantes_roster(cfg.get("sustitutos", [])) if cfg else []
+    puestos_por_fecha = {fila["fecha"]: puestos_dia(fila, sustitutos) for fila in filas}
     fechas = [f["fecha"] for f in filas]
     libran = libran_por_fecha(cfg, fechas) if cfg else {}
     vacaciones_por_fecha = {
@@ -192,8 +202,11 @@ def generar_html(
             d = parse_fecha(fila["fecha"])
             puestos = puestos_por_fecha[fila["fecha"]]
             personas = sorted({p["persona"] for p in puestos})
+            asignados = set(personas)
             libres = [
-                n for n in libran.get(fila["fecha"], []) if n not in vacaciones_por_fecha[fila["fecha"]]
+                n
+                for n in libran.get(fila["fecha"], [])
+                if n not in vacaciones_por_fecha[fila["fecha"]] and n not in asignados
             ]
             vacaciones = vacaciones_por_fecha.get(fila["fecha"], [])
             extras = extras_por_fecha.get(fila["fecha"], {})
@@ -365,6 +378,15 @@ def generar_html(
     .puesto[data-campo="cesantes"] .rol {{ color: var(--muted); }}
     .puesto[data-persona^="Vacante"] {{ background: #fce7f3; border: 1px dashed #f472b6; }}
     .puesto[data-persona^="Vacante"] .rol {{ color: #be185d; }}
+    .puesto.vacante-cubierta {{
+      background: #f0fdf4; border: 1px solid #86efac; border-style: solid;
+    }}
+    .puesto.vacante-cubierta .rol {{ color: #15803d; }}
+    .etiq-cubierta {{
+      display: block; width: 100%; margin-top: 1px;
+      color: #15803d; font-weight: 700; font-size: 0.85em;
+      text-transform: uppercase; letter-spacing: 0.02em;
+    }}
     .dia.resaltado {{ border-color: var(--resalt-borde); background: var(--resalt); }}
     .dia.atenuado {{ opacity: 0.35; }}
     .puesto.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; }}
@@ -386,9 +408,13 @@ def generar_html(
     .libre .nombre {{ color: var(--muted); font-weight: 600; }}
     .libre.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; color: var(--texto); }}
     .libre.resaltado .nombre, .libre.resaltado .etiq {{ color: var(--texto); }}
-    .vacaciones, .extras {{
+    .vacaciones {{
       display: flex; flex-direction: column; gap: 2px; margin-top: 0.25rem;
     }}
+    .extras {{
+      display: none; flex-direction: column; gap: 2px; margin-top: 0.25rem;
+    }}
+    body.mostrar-extras .extras {{ display: flex; }}
     .vacacion, .extra {{
       font-size: 0.58rem; line-height: 1.25; padding: 2px 4px;
       border-radius: 4px; display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap;
@@ -448,6 +474,10 @@ def generar_html(
         <input type="checkbox" id="mostrar-libres">
         Mostrar quienes libran
       </label>
+      <label class="check-libres">
+        <input type="checkbox" id="mostrar-extras">
+        Mostrar horas extra
+      </label>
     </div>
     <nav class="tabs-mes">{mes_btns}</nav>
     <div id="mi-resumen" class="mi-resumen"></div>
@@ -459,7 +489,8 @@ def generar_html(
       <span><strong>Zodiac</strong> · apertura puerto</span>
       <span><strong>Torre</strong></span>
       <span><strong>Cesantes</strong> · refuerzo / vacante (varios con ;)</span>
-      <span><strong>Vacante</strong> · hueco sin cubrir (edita a mano o horas_extras)</span>
+      <span><strong>Vacante</strong> · hueco sin cubrir (rosa)</span>
+      <span><strong>Cubierta</strong> · sustituto temporal (verde) · Arturo / Anxo</span>
       <span><strong>Vacaciones</strong> · no disponible (naranja)</span>
       <span><strong>Extra</strong> · horas extras (morado)</span>
       <span><strong>Libre</strong> · descanso (rotación 4/2)</span>
@@ -475,10 +506,16 @@ def generar_html(
     const meses = document.querySelectorAll(".mes");
     const filtro = document.getElementById("filtro");
     const checkLibres = document.getElementById("mostrar-libres");
+    const checkExtras = document.getElementById("mostrar-extras");
     const resumen = document.getElementById("mi-resumen");
 
     checkLibres.addEventListener("change", () => {{
       document.body.classList.toggle("mostrar-libres", checkLibres.checked);
+      aplicarFiltro(filtro.value);
+    }});
+
+    checkExtras.addEventListener("change", () => {{
+      document.body.classList.toggle("mostrar-extras", checkExtras.checked);
       aplicarFiltro(filtro.value);
     }});
 

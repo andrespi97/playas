@@ -16,12 +16,15 @@ from datetime import date
 
 from generar_turnos import (  # noqa: E402
     ErrorGeneracion,
+    ausentes_por_disponibilidad,
     cargar_config_validada,
     construir_personas,
     contar_socorristas_trabajando,
     generar_csv,
     max_racha_dias,
     nombres_asignados_fila,
+    nombres_completos_ausentes,
+    nombres_refuerzo_disponibilidad,
     trabaja_en_dia,
     validar_administracion,
     validar_config,
@@ -39,6 +42,7 @@ from turnos_common import (  # noqa: E402
     parse_fecha,
     parse_horas_extras,
     parse_lista_nombres,
+    sustitutos_presentes_fila,
 )
 
 
@@ -109,9 +113,15 @@ class TestCoberturaExtendida(unittest.TestCase):
         inicio = parse_fecha(cfg["periodo"]["inicio"])
         filas = filas_csv()
         for dia_idx, fila in enumerate(filas):
-            n = contar_socorristas_trabajando(personas, dia_idx, rot)
+            if celda_bloqueada(fila.get("bloqueado", "")):
+                continue
+            fecha_str = fila["fecha"]
+            ausentes = nombres_completos_ausentes(fila.get("vacaciones", ""), personas) | ausentes_por_disponibilidad(
+                cfg, fecha_str, personas
+            )
+            n = contar_socorristas_trabajando(personas, dia_idx, rot, ausentes, cfg, fecha_str)
             err = validar_cobertura_extendida(fila, n)
-            self.assertIsNone(err, f"{fila['fecha']} ({n} socorristas): {err}")
+            self.assertIsNone(err, f"{fecha_str} ({n} socorristas): {err}")
 
     def test_detecta_falta_torre_con_personal(self) -> None:
         self.assertEqual(
@@ -137,6 +147,7 @@ class TestRotacion4x2(unittest.TestCase):
             construir_personas(cfg),
             cfg["rotacion"],
             parse_fecha(cfg["periodo"]["inicio"]),
+            refuerzos_disponibilidad=nombres_refuerzo_disponibilidad(cfg),
         )
         self.assertIsNone(err, err)
 
@@ -193,11 +204,17 @@ class TestRotacion4x2(unittest.TestCase):
         rot = cfg["rotacion"]
         inicio = parse_fecha(cfg["periodo"]["inicio"])
         filas = filas_csv()
-        err = validar_rotacion_4_2(filas, personas, rot, inicio)
+        err = validar_rotacion_4_2(
+            filas,
+            personas,
+            rot,
+            inicio,
+            refuerzos_disponibilidad=nombres_refuerzo_disponibilidad(cfg),
+        )
         self.assertIsNone(err, err)
         for fila in filas:
             dia_idx = (parse_fecha(fila["fecha"]) - inicio).days
-            for nombre in ("Esther", "Adrián"):
+            for nombre in ("Esther", "Fernando", "Adrián"):
                 if nombre not in nombres_asignados_fila(fila):
                     continue
                 p = next(x for x in personas if x.nombre.split()[0] == nombre)
@@ -250,6 +267,53 @@ class TestPreferenciaZodiac(unittest.TestCase):
         self.assertIn("cesantes", fila)
 
 
+class TestSustitutos(unittest.TestCase):
+    def test_cuenta_sustitutos_presentes(self) -> None:
+        fila = {
+            "fecha": "2026-07-10",
+            "socorrista_chapela": "Fernando",
+            "abrir_torre": "Arturo",
+            "cesantes": "Vacante 1; Vacante 2",
+            "vacaciones": "",
+        }
+        self.assertEqual(sustitutos_presentes_fila(fila, ["Arturo", "Anxo"]), ["Arturo"])
+
+    def test_dos_sustitutos(self) -> None:
+        fila = {
+            "fecha": "2026-07-10",
+            "socorrista_chapela": "Fernando",
+            "abrir_torre": "Arturo",
+            "cesantes": "Anxo; Vacante 1",
+            "vacaciones": "",
+        }
+        self.assertEqual(sustitutos_presentes_fila(fila, ["Arturo", "Anxo"]), ["Arturo", "Anxo"])
+
+    def test_marca_vacantes_en_vista(self) -> None:
+        from generar_vista import puestos_dia
+
+        fila = next(f for f in filas_csv() if f["fecha"] == "2026-07-10")
+        puestos = puestos_dia(fila, ["Arturo", "Anxo"])
+        cubiertas = [p for p in puestos if p.get("vacante_cubierta")]
+        self.assertEqual(len(cubiertas), 1)
+        self.assertEqual(cubiertas[0]["sustituto"], "Arturo")
+        self.assertTrue(str(cubiertas[0]["persona"]).startswith("Vacante"))
+
+    def test_asignado_no_aparece_como_libre(self) -> None:
+        from generar_turnos import libran_por_fecha
+
+        cfg = cargar_config_validada()
+        fila = next(f for f in filas_csv() if f["fecha"] == "2026-07-11")
+        from generar_vista import puestos_dia
+
+        puestos = puestos_dia(fila, cfg.get("sustitutos", []))
+        asignados = {p["persona"] for p in puestos}
+        libres = libran_por_fecha(cfg, ["2026-07-11"])["2026-07-11"]
+        self.assertIn("Anxo", asignados)
+        libres_visibles = [n for n in libres if n not in asignados]
+        self.assertNotIn("Anxo", libres_visibles)
+        self.assertEqual(libres.count("Anxo"), 1)
+
+
 class TestAdministracion(CsvBackupMixin, unittest.TestCase):
     def test_parse_bloqueado(self) -> None:
         self.assertTrue(celda_bloqueada("1"))
@@ -280,6 +344,61 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(fila["patron_chapela"], "FIJO-15JUL")
         self.assertEqual(fila["bloqueado"], "1")
 
+    def test_bloqueado_preserva_congelar_false(self) -> None:
+        """bloqueado=1 se respeta aunque congelar=False (p. ej. tests o regenerar futuro)."""
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        filas = cargar_filas_csv()
+        for fila in filas:
+            if fila["fecha"] == "2026-07-07":
+                fila["socorrista_chapela"] = "Fernando"
+                fila["patron_chapela"] = "Esther"
+                fila["patron_cesantes"] = "Adrián"
+                fila["cesantes"] = "Robinson; Vacante 2; Vacante 4"
+                fila["horas_extras"] = "Fernando:8;Esther:8"
+                fila["bloqueado"] = "1"
+                break
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+            import csv
+
+            writer = csv.DictWriter(f, fieldnames=filas[0].keys())
+            writer.writeheader()
+            writer.writerows(filas)
+
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-07")
+        self.assertEqual(fila["socorrista_chapela"], "Fernando")
+        self.assertEqual(fila["patron_chapela"], "Esther")
+        self.assertEqual(fila["cesantes"], "Robinson; Vacante 2; Vacante 4")
+        self.assertEqual(fila["horas_extras"], "Fernando:8;Esther:8")
+
+    def test_bloqueado_preserva_regenerar_todo(self) -> None:
+        """--regenerar-todo no toca filas con bloqueado=1."""
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        filas = cargar_filas_csv()
+        for fila in filas:
+            if fila["fecha"] == "2026-07-08":
+                fila["socorrista_chapela"] = "Fernando"
+                fila["patron_chapela"] = "Esther"
+                fila["llave_cesantes"] = "Robinson"
+                fila["cesantes"] = "Adrián; Vacante 2; Vacante 4"
+                fila["bloqueado"] = "1"
+                break
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+            import csv
+
+            writer = csv.DictWriter(f, fieldnames=filas[0].keys())
+            writer.writeheader()
+            writer.writerows(filas)
+
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-08")
+        self.assertEqual(fila["socorrista_chapela"], "Fernando")
+        self.assertEqual(fila["patron_chapela"], "Esther")
+        self.assertEqual(fila["llave_cesantes"], "Robinson")
+        self.assertEqual(fila["cesantes"], "Adrián; Vacante 2; Vacante 4")
+
     def test_jul_11_sin_vacaciones_esther(self) -> None:
         cfg = cargar_config_validada()
         generar_csv(cfg, congelar=False)
@@ -304,7 +423,11 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             )
 
         filas = cargar_filas_csv()
-        filas[10]["vacaciones"] = "Esther"
+        for fila in filas:
+            if fila["fecha"] == "2026-07-09":
+                fila["vacaciones"] = "Esther"
+                fila["bloqueado"] = ""
+                break
         with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
             import csv
 
@@ -314,7 +437,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         generar_csv(cfg, congelar=False)
         filas = cargar_filas_csv()
         self.assertEqual(
-            next(f for f in filas if f["fecha"] == "2026-07-11")["vacaciones"],
+            next(f for f in filas if f["fecha"] == "2026-07-09")["vacaciones"],
             "Esther",
         )
         self.assertEqual(
@@ -327,15 +450,19 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         cfg = cargar_config_validada()
         generar_csv(cfg, congelar=False)
         filas = cargar_filas_csv()
-        filas[10]["vacaciones"] = "Esther"
+        for fila in filas:
+            if fila["fecha"] == "2026-07-09":
+                fila["vacaciones"] = "Esther"
+                fila["bloqueado"] = ""
+                break
         with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
             import csv
 
-            writer = csv.DictWriter(f, fieldnames=filas[10].keys())
+            writer = csv.DictWriter(f, fieldnames=filas[0].keys())
             writer.writeheader()
             writer.writerows(filas)
         generar_csv(cfg, congelar=False)
-        fila = cargar_filas_csv()[10]
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-09")
         asignados = {
             fila.get(c, "")
             for c in fila
@@ -400,6 +527,7 @@ class TestCongelado(CsvBackupMixin, unittest.TestCase):
         for fila in filas:
             if fila["fecha"] == "2026-07-02":
                 fila["socorrista_chapela"] = "FIJO-2JUL"
+                fila["bloqueado"] = ""
                 break
         with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
             import csv
@@ -422,6 +550,7 @@ class TestCongelado(CsvBackupMixin, unittest.TestCase):
         for fila in filas:
             if fila["fecha"] == "2026-07-02":
                 fila["socorrista_chapela"] = "FIJO-2JUL"
+                fila["bloqueado"] = ""
                 break
         with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
             import csv
@@ -462,9 +591,9 @@ class TestConfig(unittest.TestCase):
         personas = construir_personas(cfg)
         soc = [p for p in personas if p.rol == "socorrista"]
         pat = [p for p in personas if p.rol == "patron"]
-        self.assertEqual(len(soc), 8)
-        self.assertEqual(len(pat), 3)
-        self.assertEqual(len(personas), 11)
+        self.assertEqual(len(soc), 10)
+        self.assertEqual(len(pat), 4)
+        self.assertEqual(len(personas), 14)
         vacantes = [p.nombre for p in personas if p.nombre.startswith("Vacante")]
         self.assertEqual(sorted(vacantes), ["Vacante 1", "Vacante 2", "Vacante 3", "Vacante 4"])
 

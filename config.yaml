@@ -14,7 +14,7 @@ periodo:
 #   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
 #   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
 #   horas_extras — Nombre:horas; Nombre:horas (solo manual)
-#   bloqueado    — 1 o x: la fila entera no se recalcula al regenerar
+#   bloqueado    — 1 o x: la fila no se toca NUNCA al regenerar (ni con --regenerar-todo)
 congelado:
   pasado_automatico: true
   hasta: "2026-07-03"
@@ -29,13 +29,15 @@ rotacion:
 # Grupo 1: Esther (pat) + Fernando + Vacante 1
 # Grupo 2: Adrián (pat) + Claudio + Alex + Vacante 2
 # Grupo 3: Vacante 3 (pat, hueco Pablo) + Robinson + Sergio + Vacante 4
-# Plantilla: 8 socorristas + 3 patrones = 11
+# Plantilla: 10 socorristas + 4 patrones = 14 entradas (Anxo soc+pat fines de semana)
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
+  - { nombre: "Arturo", grupo: 1 }
   - { nombre: "Vacante 1", grupo: 1 }
   - { nombre: "Claudio Pazos González", grupo: 2 }
   - { nombre: "Alejandro Panadeiros Covelo", grupo: 2 }
   - { nombre: "Vacante 2", grupo: 2 }
+  - { nombre: "Anxo", grupo: 2 }
   - { nombre: "Robinson Ubaldo Rodríguez De Jesús", grupo: 3 }
   - { nombre: "Sergio Amoedo Domínguez", grupo: 3 }
   - { nombre: "Vacante 4", grupo: 3 }
@@ -43,6 +45,7 @@ socorristas:
 patrones:
   - { nombre: "Esther Román Figueroa", grupo: 1 }
   - { nombre: "Adrián Bouzón Amoedo", grupo: 2 }
+  - { nombre: "Anxo", grupo: 2 }
   - { nombre: "Vacante 3", grupo: 3 }
 
 # De baja: no entran en rotación; su hueco es la vacante del mismo grupo
@@ -51,14 +54,43 @@ baja:
     grupo: 3
     vacante: "Vacante 3"
 
+# Incorporación parcial: solo puede trabajar en estas fechas (resto = no disponible)
+disponibilidad:
+  Arturo:
+    fechas:
+      - "2026-07-10"
+      - "2026-07-15"
+      - "2026-07-16"
+      - "2026-07-21"
+      - "2026-07-22"
+      - "2026-07-27"
+      - "2026-07-28"
+      - "2026-08-02"
+      - "2026-08-03"
+      - "2026-08-09"
+      - "2026-08-15"
+      - "2026-08-20"
+      - "2026-08-21"
+      - "2026-08-26"
+      - "2026-08-27"
+  Anxo:
+    fines_de_semana: true
+
+# Sustitutos temporales: cada uno cubre una vacante el día que trabaja
+sustitutos:
+  - "Arturo"
+  - "Anxo"
+
 preferencias:
+  # G1 trabaja (4/2): Esther patrón Chapela + Fernando socorrista Chapela.
+  # G1 libra (2 días): no se asignan; si van de extra, edítalos a mano (puesto + horas_extras).
   patron_chapela:
     - "Esther Román Figueroa"
 
   pareja_chapela:
     "Esther Román Figueroa": "Fernando Franco Martins"
 
-  # Cuando Esther libra, Robinson cubre Chapela (4 días seguidos por bloque)
+  # Cuando Esther libra, Robinson/Sergio cubren Chapela (4 días seguidos por bloque)
   socorrista_chapela:
     - "Robinson Ubaldo Rodríguez De Jesús"
     - "Sergio Amoedo Domínguez"
@@ -90,6 +122,15 @@ preferencias:
     - "Sergio Amoedo Domínguez"
     - "Robinson Ubaldo Rodríguez De Jesús"
     - "Fernando Franco Martins"
+
+  # Orden normal de asignación: puesto → zodiac → torre.
+  # Estos van al último hueco libre en orden inverso: zodiac → torre → puesto.
+  prioridad_invertida:
+    - "Arturo"
+
+  # Socorrista y patrón, pero solo se asigna como socorrista (de momento)
+  solo_socorrista:
+    - "Anxo"
 
   # Prefieren zodiac; pueden abrir puesto solo si no hay otro disponible
   prefieren_zodiac:

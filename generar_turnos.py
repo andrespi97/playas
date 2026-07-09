@@ -110,11 +110,19 @@ def validar_config(cfg: dict) -> list[str]:
         "llave_cesantes_pool_g3",
         "abrir_torre_pool",
         "prefieren_zodiac",
+        "prioridad_invertida",
+        "solo_socorrista",
     )
     for clave in listas_nombre:
         for nombre in prefs.get(clave, []):
             if not nombre.startswith("Vacante") and nombre not in nombres_registrados:
                 errores.append(f"preferencias.{clave}: nombre desconocido «{nombre}»")
+
+    for nombre in cfg.get("sustitutos", []):
+        if not nombre.startswith("Vacante") and nombre not in nombres_registrados:
+            sn = solo_nombre(nombre)
+            if not any(solo_nombre(n) == sn for n in nombres_registrados):
+                errores.append(f"sustitutos: nombre desconocido «{nombre}»")
 
     for patron, pareja in prefs.get("pareja_chapela", {}).items():
         if patron not in nombres_registrados:
@@ -126,6 +134,26 @@ def validar_config(cfg: dict) -> list[str]:
         nombre = entrada.get("nombre", "")
         if nombre and nombre in nombres_registrados:
             errores.append(f"baja: «{nombre}» no puede estar también en socorristas/patrones")
+
+    indice_pila = {solo_nombre(n): n for n in nombres_registrados}
+    for clave, datos in (cfg.get("disponibilidad") or {}).items():
+        nombre_cfg = indice_pila.get(solo_nombre(clave)) or (
+            clave if clave in nombres_registrados else None
+        )
+        if not nombre_cfg:
+            errores.append(f"disponibilidad: nombre desconocido «{clave}»")
+            continue
+        if isinstance(datos, dict) and datos.get("fines_de_semana"):
+            continue
+        fechas = datos.get("fechas", []) if isinstance(datos, dict) else datos
+        if not fechas:
+            errores.append(f"disponibilidad.{clave}: indica fechas o fines_de_semana: true")
+            continue
+        for fecha in fechas:
+            try:
+                parse_fecha(fecha)
+            except ValueError:
+                errores.append(f"disponibilidad.{clave}: fecha inválida «{fecha}»")
 
     cong = cfg.get("congelado") or {}
     if hasta := cong.get("hasta"):
@@ -218,6 +246,8 @@ class PoolsPreferencias:
     pool_llave_g2: list[str]
     pool_llave_g3: list[str]
     pool_torre: list[str]
+    prioridad_invertida: set[str]
+    solo_socorrista: set[str]
     pref_patron_chapela: list[str]
     pref_soc_chapela: list[str]
     pareja_chapela: dict[str, str]
@@ -235,6 +265,8 @@ def extraer_pools(prefs: dict) -> PoolsPreferencias:
         pool_llave_g2=sin_vacantes_roster(prefs.get("llave_cesantes_pool_g2", [])),
         pool_llave_g3=sin_vacantes_roster(prefs.get("llave_cesantes_pool_g3", [])),
         pool_torre=sin_vacantes_roster(prefs.get("abrir_torre_pool", [])),
+        prioridad_invertida=set(sin_vacantes_roster(prefs.get("prioridad_invertida", []))),
+        solo_socorrista=set(sin_vacantes_roster(prefs.get("solo_socorrista", []))),
         pref_patron_chapela=prefs.get("patron_chapela", []),
         pref_soc_chapela=prefs.get("socorrista_chapela", []),
         pareja_chapela=prefs.get("pareja_chapela", {}),
@@ -279,6 +311,26 @@ def _pool_abrir_puesto(pool: list[str], prefieren_zodiac: set[str]) -> list[str]
     return filtrado or list(pool)
 
 
+def _sin_prioridad_invertida(candidatos: list[Persona], invertida: set[str]) -> list[Persona]:
+    return [p for p in candidatos if p.nombre not in invertida]
+
+
+def _colocar_prioridad_invertida(
+    persona: Persona,
+    llave_cesantes: Persona | None,
+    socorrista_zodiac: Persona | None,
+    abrir_torre: Persona | None,
+) -> tuple[Persona | None, Persona | None, Persona | None]:
+    """zodiac → torre → puesto (inverso del orden normal de asignación)."""
+    if not socorrista_zodiac:
+        return llave_cesantes, persona, abrir_torre
+    if not abrir_torre:
+        return llave_cesantes, socorrista_zodiac, persona
+    if not llave_cesantes:
+        return persona, socorrista_zodiac, abrir_torre
+    return llave_cesantes, socorrista_zodiac, abrir_torre
+
+
 def bloque_g2_activo(dia_idx: int, rotacion: dict) -> int:
     return indice_bloque_grupo(dia_idx, 2, rotacion)
 
@@ -302,6 +354,69 @@ def nombres_completos_ausentes(vacaciones_csv: str, personas: list[Persona]) -> 
         for n in parse_lista_nombres(vacaciones_csv)
         if n in indice
     }
+
+
+def _nombre_en_conjunto(nombre: str, conjunto: set[str]) -> bool:
+    return nombre in conjunto or solo_nombre(nombre) in conjunto
+
+
+def _fechas_disponibilidad_persona(cfg: dict, datos: dict | list) -> set[str]:
+    periodo = cfg.get("periodo", {})
+    inicio = parse_fecha(periodo["inicio"])
+    fin = parse_fecha(periodo["fin"])
+    if isinstance(datos, dict) and datos.get("fines_de_semana"):
+        return {d.isoformat() for d in rango_fechas(inicio, fin) if d.weekday() >= 5}
+    fechas = datos.get("fechas", []) if isinstance(datos, dict) else datos
+    return {parse_fecha(f).isoformat() for f in fechas}
+
+
+def _nombres_disponibilidad_limitada(cfg: dict) -> set[str]:
+    nombres: set[str] = set()
+    for nombre in mapa_disponibilidad(cfg):
+        nombres.add(nombre)
+        nombres.add(solo_nombre(nombre))
+    return nombres
+
+
+def nombres_refuerzo_disponibilidad(cfg: dict) -> set[str]:
+    return _nombres_disponibilidad_limitada(cfg)
+
+
+def socorrista_por_nombre(personas: list[Persona], nombre: str) -> Persona | None:
+    sn = solo_nombre(nombre)
+    for p in personas:
+        if p.rol == "socorrista" and solo_nombre(p.nombre) == sn:
+            return p
+    return None
+
+
+def mapa_disponibilidad(cfg: dict) -> dict[str, set[str]]:
+    """Nombre completo -> fechas ISO en que puede trabajar. Sin entrada = sin restricción."""
+    resultado: dict[str, set[str]] = {}
+    personas = construir_personas(cfg)
+    indice = indice_por_nombre_pila(personas)
+    for clave, datos in (cfg.get("disponibilidad") or {}).items():
+        soc = socorrista_por_nombre(personas, clave)
+        if soc:
+            nombre = soc.nombre
+        elif persona := indice.get(solo_nombre(clave)):
+            nombre = persona.nombre
+        else:
+            nombre = clave
+        resultado[nombre] = _fechas_disponibilidad_persona(cfg, datos)
+    return resultado
+
+
+def ausentes_por_disponibilidad(
+    cfg: dict,
+    fecha_str: str,
+    personas: list[Persona],
+) -> set[str]:
+    ausentes: set[str] = set()
+    for nombre, fechas_ok in mapa_disponibilidad(cfg).items():
+        if fecha_str not in fechas_ok:
+            ausentes.add(nombre)
+    return ausentes
 
 
 def admin_desde_existente(existentes: dict[str, dict[str, str]], fecha_str: str) -> dict[str, str]:
@@ -401,6 +516,7 @@ def validar_rotacion_4_2(
     rotacion: dict,
     inicio: date | None = None,
     fechas_congeladas: set[str] | None = None,
+    refuerzos_disponibilidad: set[str] | None = None,
 ) -> str | None:
     if not filas:
         return None
@@ -408,6 +524,7 @@ def validar_rotacion_4_2(
     congeladas = fechas_congeladas or set()
     max_trabajo = rotacion["dias_trabajo"]
     indice = indice_por_nombre_pila(personas)
+    refuerzos = refuerzos_disponibilidad or set()
     if inicio is None:
         inicio = parse_fecha(filas[0]["fecha"])
 
@@ -423,7 +540,11 @@ def validar_rotacion_4_2(
             persona = indice.get(nombre)
             if not persona:
                 continue
-            if not trabaja_en_dia(dia_idx, persona.grupo, rotacion) and nombre not in extras_dia:
+            if (
+                not trabaja_en_dia(dia_idx, persona.grupo, rotacion)
+                and nombre not in extras_dia
+                and not _nombre_en_conjunto(nombre, refuerzos)
+            ):
                 return (
                     f"{nombre} asignado el {fila['fecha']} en día libre "
                     f"(grupo {persona.grupo}); añádelo a horas_extras si es extra"
@@ -448,9 +569,26 @@ def personal_del_dia(
     personas: list[Persona],
     dia_idx: int,
     rotacion: dict,
+    cfg: dict | None = None,
+    fecha_str: str | None = None,
+    solo_socorrista: set[str] | None = None,
 ) -> tuple[list[Persona], list[Persona]]:
     trabajando = [p for p in personas if trabaja_en_dia(dia_idx, p.grupo, rotacion)]
-    patrones = [p for p in trabajando if p.rol == "patron"]
+    nombres_trabajando = {p.nombre for p in trabajando}
+
+    if cfg and fecha_str:
+        for nombre, fechas_ok in mapa_disponibilidad(cfg).items():
+            if fecha_str not in fechas_ok:
+                continue
+            soc = socorrista_por_nombre(personas, nombre)
+            if soc and soc.nombre not in nombres_trabajando:
+                trabajando.append(soc)
+                nombres_trabajando.add(soc.nombre)
+
+    excluir_patron = solo_socorrista or set()
+    patrones = [
+        p for p in trabajando if p.rol == "patron" and not _nombre_en_conjunto(p.nombre, excluir_patron)
+    ]
     socorristas = [p for p in trabajando if p.rol == "socorrista"]
     return patrones, socorristas
 
@@ -460,16 +598,32 @@ def contar_socorristas_trabajando(
     dia_idx: int,
     rotacion: dict,
     ausentes: set[str] | None = None,
+    cfg: dict | None = None,
+    fecha_str: str | None = None,
 ) -> int:
     ausentes = ausentes or set()
-    return sum(
-        1
-        for p in personas
-        if p.rol == "socorrista"
-        and not es_vacante(p)
-        and p.nombre not in ausentes
-        and trabaja_en_dia(dia_idx, p.grupo, rotacion)
-    )
+    contados: set[str] = set()
+    total = 0
+    for p in personas:
+        if p.rol != "socorrista" or es_vacante(p) or p.nombre in ausentes:
+            continue
+        if trabaja_en_dia(dia_idx, p.grupo, rotacion):
+            total += 1
+            contados.add(solo_nombre(p.nombre))
+
+    if cfg and fecha_str:
+        for nombre, fechas_ok in mapa_disponibilidad(cfg).items():
+            if fecha_str not in fechas_ok or nombre in ausentes:
+                continue
+            sn = solo_nombre(nombre)
+            if sn in contados:
+                continue
+            soc = socorrista_por_nombre(personas, nombre)
+            if soc and not es_vacante(soc):
+                total += 1
+                contados.add(sn)
+
+    return total
 
 
 def buscar_por_nombre(lista: list[Persona], nombre: str) -> Persona | None:
@@ -570,12 +724,16 @@ def asignar_puestos(
         return fila
 
     excluidos: set[str] = {socorrista_chapela.nombre}
+    invertida = pools.prioridad_invertida
 
-    # 1. Abrir puesto: primero quien no prefiere zodiac; Claudio/Alex solo si no hay otro
+    # 1. Abrir puesto: primero quien no prefiere zodiac ni tiene prioridad invertida
     pool_llave = _pool_abrir_puesto(pools.pool_llave_g2 + pools.pool_llave_g3, pools.prefieren_zodiac)
-    candidatos_llave = [
-        s for s in soc_confirmados if s.nombre not in excluidos and s.nombre not in pools.prefieren_zodiac
-    ]
+    candidatos_llave = _sin_prioridad_invertida(
+        [
+            s for s in soc_confirmados if s.nombre not in excluidos and s.nombre not in pools.prefieren_zodiac
+        ],
+        invertida,
+    )
     nombre_lc = llave_por_bloque.get(
         clave,
         (pools.pool_llave_g2 or pools.pool_llave_g3 or [""])[0],
@@ -583,9 +741,12 @@ def asignar_puestos(
     llave_cesantes = resolver_socorrista(nombre_lc, pool_llave, candidatos_llave, bloque + 1, set())
 
     if not llave_cesantes:
-        emergencia = [
-            s for s in soc_confirmados if s.nombre not in excluidos and s.nombre in pools.prefieren_zodiac
-        ]
+        emergencia = _sin_prioridad_invertida(
+            [
+                s for s in soc_confirmados if s.nombre not in excluidos and s.nombre in pools.prefieren_zodiac
+            ],
+            invertida,
+        )
         llave_cesantes = resolver_socorrista(
             "",
             list(pools.prefieren_zodiac),
@@ -604,7 +765,10 @@ def asignar_puestos(
         roster_z = pools.pref_zodiac_reserva
     nombre_z = zodiac_por_bloque.get(clave, roster_z[0] if roster_z else "")
 
-    candidatos_zodiac = [s for s in soc_confirmados if s.nombre not in excluidos]
+    candidatos_zodiac = _sin_prioridad_invertida(
+        [s for s in soc_confirmados if s.nombre not in excluidos],
+        invertida,
+    )
     if g2_trabaja(dia_idx, rotacion):
         candidatos_zodiac = [s for s in candidatos_zodiac if s.nombre in pools.prefieren_zodiac] or candidatos_zodiac
 
@@ -613,12 +777,22 @@ def asignar_puestos(
         excluidos.add(socorrista_zodiac.nombre)
 
     # 3. Torre
-    candidatos_torre = [s for s in soc_confirmados if s.nombre not in excluidos]
+    candidatos_torre = _sin_prioridad_invertida(
+        [s for s in soc_confirmados if s.nombre not in excluidos],
+        invertida,
+    )
     abrir_torre = elegir_fijo_por_bloque(bloque_cal, pools.pool_torre, candidatos_torre, set())
     if not abrir_torre and candidatos_torre:
         abrir_torre = candidatos_torre[0]
     if abrir_torre:
         excluidos.add(abrir_torre.nombre)
+
+    # 4. Prioridad invertida: zodiac → torre → puesto (último hueco libre)
+    for persona in [s for s in soc_confirmados if s.nombre in invertida and s.nombre not in excluidos]:
+        llave_cesantes, socorrista_zodiac, abrir_torre = _colocar_prioridad_invertida(
+            persona, llave_cesantes, socorrista_zodiac, abrir_torre
+        )
+        excluidos.add(persona.nombre)
 
     fila["socorrista_chapela"] = solo_nombre(socorrista_chapela.nombre)
     fila["patron_chapela"] = solo_nombre(patron_chapela.nombre) if patron_chapela else ""
@@ -691,11 +865,11 @@ def libran_por_fecha(cfg: dict, fechas_iso: list[str]) -> dict[str, list[str]]:
     for fecha_str in fechas_iso:
         dia_idx = (parse_fecha(fecha_str) - inicio).days
         libres[fecha_str] = sorted(
-            (
+            {
                 solo_nombre(p.nombre)
                 for p in personas
                 if not es_vacante(p) and not trabaja_en_dia(dia_idx, p.grupo, rotacion)
-            ),
+            },
             key=str.casefold,
         )
     return libres
@@ -737,23 +911,34 @@ def generar_csv(
     for dia_idx, fecha in enumerate(fechas):
         fecha_str = fecha.isoformat()
         admin = admin_desde_existente(existentes, fecha_str)
-        ausentes = nombres_completos_ausentes(admin["vacaciones"], personas)
+        ausentes = nombres_completos_ausentes(admin["vacaciones"], personas) | ausentes_por_disponibilidad(
+            cfg, fecha_str, personas
+        )
 
+        previa = existentes.get(fecha_str)
+        bloqueada = previa is not None and celda_bloqueada(previa.get("bloqueado", ""))
         congelada_rango = (
-            limite is not None and fecha <= limite and fecha_str in existentes
-        )
-        congelada_csv = (
             congelar
-            and fecha_str in existentes
-            and celda_bloqueada(existentes[fecha_str].get("bloqueado", ""))
+            and limite is not None
+            and fecha <= limite
+            and previa is not None
         )
-        if congelada_rango or congelada_csv:
-            fila = normalizar_fila_csv(existentes[fecha_str])
+
+        if bloqueada:
+            # Copia literal: bloqueado=1 manda siempre, aunque congelar=False o --regenerar-todo
+            fila = dict(previa)
+            fila["fecha"] = fecha_str
+            n_congelados += 1
+            fechas_congeladas.add(fecha_str)
+        elif congelada_rango:
+            fila = normalizar_fila_csv(previa)
             fila["fecha"] = fecha_str
             n_congelados += 1
             fechas_congeladas.add(fecha_str)
         else:
-            patrones, socorristas = personal_del_dia(personas, dia_idx, rotacion)
+            patrones, socorristas = personal_del_dia(
+                personas, dia_idx, rotacion, cfg, fecha_str, pools.solo_socorrista
+            )
             asignacion = asignar_puestos(
                 patrones,
                 socorristas,
@@ -768,13 +953,17 @@ def generar_csv(
                 errores.append(f"{fecha_str}: {asignacion['_error']}")
                 asignacion = {k: v for k, v in asignacion.items() if k != "_error"}
 
-            fila = {"fecha": fecha_str, **asignacion, **admin}
+            fila = normalizar_fila_csv({"fecha": fecha_str, **asignacion, **admin})
 
-        fila = normalizar_fila_csv(fila)
         filas.append(fila)
 
     if rot_err := validar_rotacion_4_2(
-        filas, personas, rotacion, inicio, fechas_congeladas
+        filas,
+        personas,
+        rotacion,
+        inicio,
+        fechas_congeladas,
+        _nombres_disponibilidad_limitada(cfg),
     ):
         errores.append(rot_err)
 
@@ -797,8 +986,12 @@ def generar_csv(
             if cob := validar_cobertura_obligatoria(fila):
                 errores.append(f"{prefijo}: {cob}")
 
-            ausentes = nombres_completos_ausentes(fila.get("vacaciones", ""), personas)
-            n_soc = contar_socorristas_trabajando(personas, dia_idx, rotacion, ausentes)
+            ausentes = nombres_completos_ausentes(fila.get("vacaciones", ""), personas) | ausentes_por_disponibilidad(
+                cfg, fecha_str, personas
+            )
+            n_soc = contar_socorristas_trabajando(
+                personas, dia_idx, rotacion, ausentes, cfg, fecha_str
+            )
             if ext := validar_cobertura_extendida(fila, n_soc):
                 errores.append(f"{prefijo}: {ext}")
 
@@ -822,7 +1015,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--regenerar-todo",
         action="store_true",
-        help="Ignora congelado y columna bloqueado; recalcula todo el periodo",
+        help="Ignora congelado por fecha; las filas con bloqueado=1 no se tocan",
     )
     parser.add_argument(
         "--congelar-hasta",

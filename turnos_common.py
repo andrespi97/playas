@@ -40,7 +40,7 @@ COLUMNAS_CSV = (
 
 # Solo edición manual en el CSV. El generador nunca las rellena (salvo copiar bloqueado).
 # vacaciones / horas_extras: se copian al regenerar días no bloqueados.
-# bloqueado: si está marcado, la fila entera no se recalcula (1, x, sí…).
+# bloqueado: si está marcado, la fila no se toca al regenerar (1, x, sí…), nunca.
 COLUMNAS_ADMIN = (
     "vacaciones",
     "horas_extras",
@@ -190,6 +190,45 @@ def format_horas_extras(extras: dict[str, float]) -> str:
         f"{nombre}:{horas:g}"
         for nombre, horas in sorted(extras.items(), key=lambda par: par[0].casefold())
     )
+
+
+def nombres_asignados_dia(fila: dict[str, str]) -> list[str]:
+    """Nombres de pila asignados ese día (puestos + cesantes)."""
+    nombres: list[str] = []
+    vistos: set[str] = set()
+    for campo in PUESTOS_ASIGNACION:
+        if valor := fila.get(campo, "").strip():
+            sn = solo_nombre(valor)
+            if sn not in vistos:
+                nombres.append(sn)
+                vistos.add(sn)
+    for nombre in parse_lista_nombres(fila.get("cesantes", "")):
+        if nombre not in vistos:
+            nombres.append(nombre)
+            vistos.add(nombre)
+    return nombres
+
+
+def sustitutos_presentes_fila(fila: dict[str, str], sustitutos: list[str]) -> list[str]:
+    """Sustitutos que trabajan ese día, en el orden del config."""
+    if not sustitutos:
+        return []
+    ausentes = set(parse_lista_nombres(fila.get("vacaciones", "")))
+    asignados = set(nombres_asignados_dia(fila))
+    return [solo_nombre(nombre) for nombre in sustitutos if solo_nombre(nombre) in asignados and solo_nombre(nombre) not in ausentes]
+
+
+def marcar_vacantes_cubiertas(
+    puestos: list[dict[str, str | bool]],
+    sustitutos_presentes: list[str],
+) -> None:
+    """Etiqueta las primeras N vacantes como cubiertas (N = sustitutos presentes)."""
+    if not sustitutos_presentes:
+        return
+    vacantes = [i for i, p in enumerate(puestos) if str(p.get("persona", "")).startswith("Vacante")]
+    for idx, sustituto in zip(vacantes, sustitutos_presentes):
+        puestos[idx]["vacante_cubierta"] = True
+        puestos[idx]["sustituto"] = sustituto
 
 
 def fila_vacia_admin() -> dict[str, str]:
