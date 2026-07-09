@@ -112,6 +112,7 @@ def validar_config(cfg: dict) -> list[str]:
         "prefieren_zodiac",
         "prioridad_invertida",
         "solo_socorrista",
+        "solo_patron",
     )
     for clave in listas_nombre:
         for nombre in prefs.get(clave, []):
@@ -143,17 +144,36 @@ def validar_config(cfg: dict) -> list[str]:
         if not nombre_cfg:
             errores.append(f"disponibilidad: nombre desconocido «{clave}»")
             continue
-        if isinstance(datos, dict) and datos.get("fines_de_semana"):
+        if isinstance(datos, dict) and (
+            datos.get("fines_de_semana") or datos.get("laborables")
+        ):
             continue
         fechas = datos.get("fechas", []) if isinstance(datos, dict) else datos
         if not fechas:
-            errores.append(f"disponibilidad.{clave}: indica fechas o fines_de_semana: true")
+            errores.append(
+                f"disponibilidad.{clave}: indica fechas, fines_de_semana o laborables"
+            )
             continue
         for fecha in fechas:
             try:
                 parse_fecha(fecha)
             except ValueError:
                 errores.append(f"disponibilidad.{clave}: fecha inválida «{fecha}»")
+
+    for sub_nombre, datos in (cfg.get("patron_sustituto") or {}).items():
+        sn = solo_nombre(sub_nombre)
+        if not any(solo_nombre(n) == sn for n in nombres_registrados):
+            errores.append(f"patron_sustituto: nombre desconocido «{sub_nombre}»")
+            continue
+        cubre = datos.get("cubre", {}) if isinstance(datos, dict) else {}
+        if not isinstance(cubre, dict):
+            errores.append(f"patron_sustituto.{sub_nombre}: cubre debe ser un mapa titular → puesto")
+            continue
+        for titular, puesto in cubre.items():
+            if titular not in nombres_registrados:
+                errores.append(f"patron_sustituto.{sub_nombre}: titular desconocido «{titular}»")
+            if puesto not in ("patron_chapela", "patron_cesantes"):
+                errores.append(f"patron_sustituto.{sub_nombre}: puesto inválido «{puesto}»")
 
     cong = cfg.get("congelado") or {}
     if hasta := cong.get("hasta"):
@@ -248,13 +268,33 @@ class PoolsPreferencias:
     pool_torre: list[str]
     prioridad_invertida: set[str]
     solo_socorrista: set[str]
+    solo_patron: set[str]
+    patron_sustituto_chapela: list[str]
+    patron_sustituto_cesantes: list[str]
     pref_patron_chapela: list[str]
     pref_soc_chapela: list[str]
     pareja_chapela: dict[str, str]
 
 
-def extraer_pools(prefs: dict) -> PoolsPreferencias:
+def listas_patron_sustituto(cfg: dict) -> tuple[list[str], list[str]]:
+    chapela: list[str] = []
+    cesantes: list[str] = []
+    for sub_nombre, datos in (cfg.get("patron_sustituto") or {}).items():
+        cubre = datos.get("cubre", {}) if isinstance(datos, dict) else {}
+        if not isinstance(cubre, dict):
+            continue
+        for _titular, puesto in cubre.items():
+            if puesto == "patron_chapela" and sub_nombre not in chapela:
+                chapela.append(sub_nombre)
+            elif puesto == "patron_cesantes" and sub_nombre not in cesantes:
+                cesantes.append(sub_nombre)
+    return chapela, cesantes
+
+
+def extraer_pools(cfg: dict) -> PoolsPreferencias:
+    prefs = cfg.get("preferencias", {})
     pref_zodiac = sin_vacantes_roster(prefs.get("socorrista_zodiac", []))
+    sub_chapela, sub_cesantes = listas_patron_sustituto(cfg)
     return PoolsPreferencias(
         pref_zodiac=pref_zodiac,
         pref_zodiac_reserva=sin_vacantes_roster(prefs.get("socorrista_zodiac_reserva", [])),
@@ -267,6 +307,9 @@ def extraer_pools(prefs: dict) -> PoolsPreferencias:
         pool_torre=sin_vacantes_roster(prefs.get("abrir_torre_pool", [])),
         prioridad_invertida=set(sin_vacantes_roster(prefs.get("prioridad_invertida", []))),
         solo_socorrista=set(sin_vacantes_roster(prefs.get("solo_socorrista", []))),
+        solo_patron=set(sin_vacantes_roster(prefs.get("solo_patron", []))),
+        patron_sustituto_chapela=sub_chapela,
+        patron_sustituto_cesantes=sub_cesantes,
         pref_patron_chapela=prefs.get("patron_chapela", []),
         pref_soc_chapela=prefs.get("socorrista_chapela", []),
         pareja_chapela=prefs.get("pareja_chapela", {}),
@@ -366,6 +409,8 @@ def _fechas_disponibilidad_persona(cfg: dict, datos: dict | list) -> set[str]:
     fin = parse_fecha(periodo["fin"])
     if isinstance(datos, dict) and datos.get("fines_de_semana"):
         return {d.isoformat() for d in rango_fechas(inicio, fin) if d.weekday() >= 5}
+    if isinstance(datos, dict) and datos.get("laborables"):
+        return {d.isoformat() for d in rango_fechas(inicio, fin) if d.weekday() < 5}
     fechas = datos.get("fechas", []) if isinstance(datos, dict) else datos
     return {parse_fecha(f).isoformat() for f in fechas}
 
@@ -390,6 +435,50 @@ def socorrista_por_nombre(personas: list[Persona], nombre: str) -> Persona | Non
     return None
 
 
+def patron_por_nombre(personas: list[Persona], nombre: str) -> Persona | None:
+    sn = solo_nombre(nombre)
+    for p in personas:
+        if p.rol == "patron" and solo_nombre(p.nombre) == sn:
+            return p
+    return None
+
+
+def persona_por_nombre_completo(personas: list[Persona], nombre: str) -> Persona | None:
+    sn = solo_nombre(nombre)
+    for p in personas:
+        if p.nombre == nombre or solo_nombre(p.nombre) == sn:
+            return p
+    return None
+
+
+def agregar_patrones_sustituto(
+    cfg: dict,
+    personas: list[Persona],
+    trabajando: list[Persona],
+    nombres_trabajando: set[str],
+    dia_idx: int,
+    rotacion: dict,
+    fecha_str: str,
+) -> None:
+    disponibles = mapa_disponibilidad(cfg)
+    for sub_clave, datos in (cfg.get("patron_sustituto") or {}).items():
+        pat = patron_por_nombre(personas, sub_clave)
+        if not pat or pat.nombre in nombres_trabajando:
+            continue
+        if fecha_str not in disponibles.get(pat.nombre, set()):
+            continue
+        cubre = datos.get("cubre", {}) if isinstance(datos, dict) else {}
+        titulares = cubre.keys() if isinstance(cubre, dict) else []
+        if not any(
+            (t := persona_por_nombre_completo(personas, str(titular_nombre)))
+            and not trabaja_en_dia(dia_idx, t.grupo, rotacion)
+            for titular_nombre in titulares
+        ):
+            continue
+        trabajando.append(pat)
+        nombres_trabajando.add(pat.nombre)
+
+
 def mapa_disponibilidad(cfg: dict) -> dict[str, set[str]]:
     """Nombre completo -> fechas ISO en que puede trabajar. Sin entrada = sin restricción."""
     resultado: dict[str, set[str]] = {}
@@ -399,6 +488,8 @@ def mapa_disponibilidad(cfg: dict) -> dict[str, set[str]]:
         soc = socorrista_por_nombre(personas, clave)
         if soc:
             nombre = soc.nombre
+        elif pat := patron_por_nombre(personas, clave):
+            nombre = pat.nombre
         elif persona := indice.get(solo_nombre(clave)):
             nombre = persona.nombre
         else:
@@ -572,6 +663,7 @@ def personal_del_dia(
     cfg: dict | None = None,
     fecha_str: str | None = None,
     solo_socorrista: set[str] | None = None,
+    solo_patron: set[str] | None = None,
 ) -> tuple[list[Persona], list[Persona]]:
     trabajando = [p for p in personas if trabaja_en_dia(dia_idx, p.grupo, rotacion)]
     nombres_trabajando = {p.nombre for p in trabajando}
@@ -584,12 +676,19 @@ def personal_del_dia(
             if soc and soc.nombre not in nombres_trabajando:
                 trabajando.append(soc)
                 nombres_trabajando.add(soc.nombre)
+        if cfg and fecha_str:
+            agregar_patrones_sustituto(
+                cfg, personas, trabajando, nombres_trabajando, dia_idx, rotacion, fecha_str
+            )
 
     excluir_patron = solo_socorrista or set()
+    excluir_soc = solo_patron or set()
     patrones = [
         p for p in trabajando if p.rol == "patron" and not _nombre_en_conjunto(p.nombre, excluir_patron)
     ]
-    socorristas = [p for p in trabajando if p.rol == "socorrista"]
+    socorristas = [
+        p for p in trabajando if p.rol == "socorrista" and not _nombre_en_conjunto(p.nombre, excluir_soc)
+    ]
     return patrones, socorristas
 
 
@@ -698,18 +797,30 @@ def asignar_puestos(
         if patron_pref:
             patron_chapela = patron_pref
         else:
-            confirmados_pat = confirmados(patrones) or patrones
-            otros = [p for p in confirmados_pat if p.nombre in pools.llave_patrones] or confirmados_pat
-            patron_chapela = elegir_fijo_por_bloque(bloque_cal, pools.llave_patrones, otros, set()) or (
-                otros[0] if otros else None
-            )
+            patron_chapela = None
+            for nombre_sub in pools.patron_sustituto_chapela:
+                if p := buscar_por_nombre(patrones, nombre_sub):
+                    patron_chapela = p
+                    break
+            if not patron_chapela:
+                confirmados_pat = confirmados(patrones) or patrones
+                otros = [p for p in confirmados_pat if p.nombre in pools.llave_patrones] or confirmados_pat
+                patron_chapela = elegir_fijo_por_bloque(bloque_cal, pools.llave_patrones, otros, set()) or (
+                    otros[0] if otros else None
+                )
 
         if patron_chapela:
             otros_patrones = [p for p in patrones if p.nombre != patron_chapela.nombre]
-            confirmados_otros = confirmados(otros_patrones)
-            patron_cesantes = confirmados_otros[0] if confirmados_otros else (
-                otros_patrones[0] if otros_patrones else None
-            )
+            patron_cesantes = None
+            for nombre_sub in pools.patron_sustituto_cesantes:
+                if p := buscar_por_nombre(otros_patrones, nombre_sub):
+                    patron_cesantes = p
+                    break
+            if not patron_cesantes:
+                confirmados_otros = confirmados(otros_patrones)
+                patron_cesantes = confirmados_otros[0] if confirmados_otros else (
+                    otros_patrones[0] if otros_patrones else None
+                )
 
     pareja = None
     if patron_chapela and not es_vacante(patron_chapela):
@@ -887,7 +998,7 @@ def generar_csv(
     fechas = rango_fechas(inicio, fin)
     personas = construir_personas(cfg)
     rotacion = cfg["rotacion"]
-    pools = extraer_pools(cfg.get("preferencias", {}))
+    pools = extraer_pools(cfg)
     roles_bloque = precomputar_roles_bloque(rotacion, len(fechas), pools)
 
     limite: date | None = None
@@ -937,7 +1048,13 @@ def generar_csv(
             fechas_congeladas.add(fecha_str)
         else:
             patrones, socorristas = personal_del_dia(
-                personas, dia_idx, rotacion, cfg, fecha_str, pools.solo_socorrista
+                personas,
+                dia_idx,
+                rotacion,
+                cfg,
+                fecha_str,
+                pools.solo_socorrista,
+                pools.solo_patron,
             )
             asignacion = asignar_puestos(
                 patrones,

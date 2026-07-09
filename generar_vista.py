@@ -490,7 +490,7 @@ def generar_html(
       <span><strong>Torre</strong></span>
       <span><strong>Cesantes</strong> · refuerzo / vacante (varios con ;)</span>
       <span><strong>Vacante</strong> · hueco sin cubrir (rosa)</span>
-      <span><strong>Cubierta</strong> · sustituto temporal (verde) · Arturo / Anxo</span>
+      <span><strong>Cubierta</strong> · sustituto temporal (verde) · Arturo / Anxo / Raúl</span>
       <span><strong>Vacaciones</strong> · no disponible (naranja)</span>
       <span><strong>Extra</strong> · horas extras (morado)</span>
       <span><strong>Libre</strong> · descanso (rotación 4/2)</span>

@@ -314,6 +314,26 @@ class TestSustitutos(unittest.TestCase):
         self.assertEqual(libres.count("Anxo"), 1)
 
 
+class TestPatronSustituto(unittest.TestCase):
+    def test_raul_cubre_esther_laborable(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-13")
+        self.assertEqual(fila["patron_chapela"], "Raúl")
+
+    def test_raul_cubre_adrian_laborable(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-17")
+        self.assertEqual(fila["patron_cesantes"], "Raúl")
+
+    def test_raul_no_trabaja_fin_de_semana(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-11")
+        self.assertNotIn("Raúl", "".join(fila.values()))
+
+
 class TestAdministracion(CsvBackupMixin, unittest.TestCase):
     def test_parse_bloqueado(self) -> None:
         self.assertTrue(celda_bloqueada("1"))
@@ -592,8 +612,8 @@ class TestConfig(unittest.TestCase):
         soc = [p for p in personas if p.rol == "socorrista"]
         pat = [p for p in personas if p.rol == "patron"]
         self.assertEqual(len(soc), 10)
-        self.assertEqual(len(pat), 4)
-        self.assertEqual(len(personas), 14)
+        self.assertEqual(len(pat), 5)
+        self.assertEqual(len(personas), 15)
         vacantes = [p.nombre for p in personas if p.nombre.startswith("Vacante")]
         self.assertEqual(sorted(vacantes), ["Vacante 1", "Vacante 2", "Vacante 3", "Vacante 4"])
 

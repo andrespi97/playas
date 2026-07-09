@@ -29,7 +29,7 @@ rotacion:
 # Grupo 1: Esther (pat) + Fernando + Vacante 1
 # Grupo 2: Adrián (pat) + Claudio + Alex + Vacante 2
 # Grupo 3: Vacante 3 (pat, hueco Pablo) + Robinson + Sergio + Vacante 4
-# Plantilla: 10 socorristas + 4 patrones = 14 entradas (Anxo soc+pat fines de semana)
+# Plantilla: 10 socorristas + 5 patrones = 15 entradas (Raúl patrón sustituto laborables)
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
   - { nombre: "Arturo", grupo: 1 }
@@ -45,6 +45,7 @@ socorristas:
 patrones:
   - { nombre: "Esther Román Figueroa", grupo: 1 }
   - { nombre: "Adrián Bouzón Amoedo", grupo: 2 }
+  - { nombre: "Raúl", grupo: 2 }
   - { nombre: "Anxo", grupo: 2 }
   - { nombre: "Vacante 3", grupo: 3 }
 
@@ -75,11 +76,21 @@ disponibilidad:
       - "2026-08-27"
   Anxo:
     fines_de_semana: true
+  Raúl:
+    laborables: true
+
+# Patrón sustituto: cubre el puesto del titular cuando libra (solo en sus días disponibles)
+patron_sustituto:
+  Raúl:
+    cubre:
+      "Esther Román Figueroa": patron_chapela
+      "Adrián Bouzón Amoedo": patron_cesantes
 
 # Sustitutos temporales: cada uno cubre una vacante el día que trabaja
 sustitutos:
   - "Arturo"
   - "Anxo"
+  - "Raúl"
 
 preferencias:
   # G1 trabaja (4/2): Esther patrón Chapela + Fernando socorrista Chapela.
@@ -131,6 +142,10 @@ preferencias:
   # Socorrista y patrón, pero solo se asigna como socorrista (de momento)
   solo_socorrista:
     - "Anxo"
+
+  # Solo patrón (nunca socorrista)
+  solo_patron:
+    - "Raúl"
 
   # Prefieren zodiac; pueden abrir puesto solo si no hay otro disponible
   prefieren_zodiac:
