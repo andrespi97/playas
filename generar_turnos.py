@@ -113,6 +113,7 @@ def validar_config(cfg: dict) -> list[str]:
         "prioridad_invertida",
         "solo_socorrista",
         "solo_patron",
+        "patron_solo_zodiac",
     )
     for clave in listas_nombre:
         for nombre in prefs.get(clave, []):
@@ -165,15 +166,25 @@ def validar_config(cfg: dict) -> list[str]:
         if not any(solo_nombre(n) == sn for n in nombres_registrados):
             errores.append(f"patron_sustituto: nombre desconocido «{sub_nombre}»")
             continue
-        cubre = datos.get("cubre", {}) if isinstance(datos, dict) else {}
-        if not isinstance(cubre, dict):
-            errores.append(f"patron_sustituto.{sub_nombre}: cubre debe ser un mapa titular → puesto")
+        if not isinstance(datos, dict):
+            errores.append(f"patron_sustituto.{sub_nombre}: formato inválido")
             continue
-        for titular, puesto in cubre.items():
-            if titular not in nombres_registrados:
-                errores.append(f"patron_sustituto.{sub_nombre}: titular desconocido «{titular}»")
+        cubre = datos.get("cubre", [])
+        puesto = datos.get("puesto", "")
+        if isinstance(cubre, list):
             if puesto not in ("patron_chapela", "patron_cesantes"):
-                errores.append(f"patron_sustituto.{sub_nombre}: puesto inválido «{puesto}»")
+                errores.append(f"patron_sustituto.{sub_nombre}: indica puesto patron_chapela o patron_cesantes")
+            for titular in cubre:
+                if titular not in nombres_registrados:
+                    errores.append(f"patron_sustituto.{sub_nombre}: titular desconocido «{titular}»")
+        elif isinstance(cubre, dict):
+            for titular, puesto_map in cubre.items():
+                if titular not in nombres_registrados:
+                    errores.append(f"patron_sustituto.{sub_nombre}: titular desconocido «{titular}»")
+                if puesto_map not in ("patron_chapela", "patron_cesantes"):
+                    errores.append(f"patron_sustituto.{sub_nombre}: puesto inválido «{puesto_map}»")
+        else:
+            errores.append(f"patron_sustituto.{sub_nombre}: cubre debe ser lista o mapa")
 
     cong = cfg.get("congelado") or {}
     if hasta := cong.get("hasta"):
@@ -269,6 +280,7 @@ class PoolsPreferencias:
     prioridad_invertida: set[str]
     solo_socorrista: set[str]
     solo_patron: set[str]
+    patron_solo_zodiac: set[str]
     patron_sustituto_chapela: list[str]
     patron_sustituto_cesantes: list[str]
     pref_patron_chapela: list[str]
@@ -280,14 +292,20 @@ def listas_patron_sustituto(cfg: dict) -> tuple[list[str], list[str]]:
     chapela: list[str] = []
     cesantes: list[str] = []
     for sub_nombre, datos in (cfg.get("patron_sustituto") or {}).items():
-        cubre = datos.get("cubre", {}) if isinstance(datos, dict) else {}
-        if not isinstance(cubre, dict):
+        if not isinstance(datos, dict):
             continue
-        for _titular, puesto in cubre.items():
-            if puesto == "patron_chapela" and sub_nombre not in chapela:
-                chapela.append(sub_nombre)
-            elif puesto == "patron_cesantes" and sub_nombre not in cesantes:
-                cesantes.append(sub_nombre)
+        puesto = datos.get("puesto", "")
+        cubre = datos.get("cubre", {})
+        if isinstance(cubre, list) and puesto == "patron_cesantes" and sub_nombre not in cesantes:
+            cesantes.append(sub_nombre)
+        elif isinstance(cubre, list) and puesto == "patron_chapela" and sub_nombre not in chapela:
+            chapela.append(sub_nombre)
+        elif isinstance(cubre, dict):
+            for _titular, puesto_map in cubre.items():
+                if puesto_map == "patron_chapela" and sub_nombre not in chapela:
+                    chapela.append(sub_nombre)
+                elif puesto_map == "patron_cesantes" and sub_nombre not in cesantes:
+                    cesantes.append(sub_nombre)
     return chapela, cesantes
 
 
@@ -308,6 +326,7 @@ def extraer_pools(cfg: dict) -> PoolsPreferencias:
         prioridad_invertida=set(sin_vacantes_roster(prefs.get("prioridad_invertida", []))),
         solo_socorrista=set(sin_vacantes_roster(prefs.get("solo_socorrista", []))),
         solo_patron=set(sin_vacantes_roster(prefs.get("solo_patron", []))),
+        patron_solo_zodiac=set(sin_vacantes_roster(prefs.get("patron_solo_zodiac", []))),
         patron_sustituto_chapela=sub_chapela,
         patron_sustituto_cesantes=sub_cesantes,
         pref_patron_chapela=prefs.get("patron_chapela", []),
@@ -451,6 +470,32 @@ def persona_por_nombre_completo(personas: list[Persona], nombre: str) -> Persona
     return None
 
 
+def nombres_patron_sustituto(cfg: dict) -> set[str]:
+    return {solo_nombre(n) for n in (cfg.get("patron_sustituto") or {})}
+
+
+def patrones_para_roles(patrones: list[Persona], pools: PoolsPreferencias) -> list[Persona]:
+    """Patrones asignables a chapela/cesantes (excluye los que solo van a zodiac)."""
+    return [p for p in patrones if not _nombre_en_conjunto(p.nombre, pools.patron_solo_zodiac)]
+
+
+def patrones_para_chapela(patrones: list[Persona], pools: PoolsPreferencias) -> list[Persona]:
+    """Candidatos a patrón Chapela (excluye sustitutos de solo cesantes)."""
+    excluir = {solo_nombre(n) for n in pools.patron_sustituto_cesantes}
+    excluir.update(pools.patron_sustituto_cesantes)
+
+    titular_presente = False
+    if pools.pref_patron_chapela:
+        titular_presente = buscar_por_nombre(patrones, pools.pref_patron_chapela[0]) is not None
+
+    if titular_presente:
+        base = patrones_para_roles(patrones, pools)
+    else:
+        # Titular chapela no trabaja: patron_solo_zodiac pueden cubrir (p. ej. Adrián si Esther libra)
+        base = patrones
+    return [p for p in base if not _nombre_en_conjunto(p.nombre, excluir)]
+
+
 def agregar_patrones_sustituto(
     cfg: dict,
     personas: list[Persona],
@@ -467,8 +512,8 @@ def agregar_patrones_sustituto(
             continue
         if fecha_str not in disponibles.get(pat.nombre, set()):
             continue
-        cubre = datos.get("cubre", {}) if isinstance(datos, dict) else {}
-        titulares = cubre.keys() if isinstance(cubre, dict) else []
+        cubre = datos.get("cubre", []) if isinstance(datos, dict) else []
+        titulares = cubre if isinstance(cubre, list) else list(cubre.keys()) if isinstance(cubre, dict) else []
         if not any(
             (t := persona_por_nombre_completo(personas, str(titular_nombre)))
             and not trabaja_en_dia(dia_idx, t.grupo, rotacion)
@@ -665,7 +710,12 @@ def personal_del_dia(
     solo_socorrista: set[str] | None = None,
     solo_patron: set[str] | None = None,
 ) -> tuple[list[Persona], list[Persona]]:
-    trabajando = [p for p in personas if trabaja_en_dia(dia_idx, p.grupo, rotacion)]
+    trabajando = [
+        p
+        for p in personas
+        if trabaja_en_dia(dia_idx, p.grupo, rotacion)
+        and not (p.rol == "patron" and solo_nombre(p.nombre) in nombres_patron_sustituto(cfg or {}))
+    ]
     nombres_trabajando = {p.nombre for p in trabajando}
 
     if cfg and fecha_str:
@@ -790,27 +840,29 @@ def asignar_puestos(
 
     patron_chapela: Persona | None = None
     patron_cesantes: Persona | None = None
+    patrones_roles = patrones_para_roles(patrones, pools)
+    patrones_chapela = patrones_para_chapela(patrones, pools)
 
-    if patrones:
+    if patrones_roles:
         pref_patron = pools.pref_patron_chapela
-        patron_pref = buscar_por_nombre(patrones, pref_patron[0]) if pref_patron else None
+        patron_pref = buscar_por_nombre(patrones_chapela, pref_patron[0]) if pref_patron else None
         if patron_pref:
             patron_chapela = patron_pref
         else:
             patron_chapela = None
             for nombre_sub in pools.patron_sustituto_chapela:
-                if p := buscar_por_nombre(patrones, nombre_sub):
+                if p := buscar_por_nombre(patrones_chapela, nombre_sub):
                     patron_chapela = p
                     break
             if not patron_chapela:
-                confirmados_pat = confirmados(patrones) or patrones
+                confirmados_pat = confirmados(patrones_chapela) or patrones_chapela
                 otros = [p for p in confirmados_pat if p.nombre in pools.llave_patrones] or confirmados_pat
                 patron_chapela = elegir_fijo_por_bloque(bloque_cal, pools.llave_patrones, otros, set()) or (
                     otros[0] if otros else None
                 )
 
         if patron_chapela:
-            otros_patrones = [p for p in patrones if p.nombre != patron_chapela.nombre]
+            otros_patrones = [p for p in patrones_roles if p.nombre != patron_chapela.nombre]
             patron_cesantes = None
             for nombre_sub in pools.patron_sustituto_cesantes:
                 if p := buscar_por_nombre(otros_patrones, nombre_sub):
@@ -869,21 +921,32 @@ def asignar_puestos(
     if llave_cesantes:
         excluidos.add(llave_cesantes.nombre)
 
-    # 2. Zodiac: Claudio/Alex cuando trabajan; reserva si G2 libra
+    # 2. Zodiac: patrón (Adrián) si trabaja; si no, Claudio/Alex o reserva
+    socorrista_zodiac: Persona | None = None
     if g2_trabaja(dia_idx, rotacion):
-        roster_z = pools.pref_zodiac
-    else:
-        roster_z = pools.pref_zodiac_reserva
-    nombre_z = zodiac_por_bloque.get(clave, roster_z[0] if roster_z else "")
+        for nombre in pools.patron_solo_zodiac:
+            if p := buscar_por_nombre(patrones, nombre):
+                if patron_chapela and p.nombre == patron_chapela.nombre:
+                    continue
+                socorrista_zodiac = p
+                break
 
-    candidatos_zodiac = _sin_prioridad_invertida(
-        [s for s in soc_confirmados if s.nombre not in excluidos],
-        invertida,
-    )
-    if g2_trabaja(dia_idx, rotacion):
-        candidatos_zodiac = [s for s in candidatos_zodiac if s.nombre in pools.prefieren_zodiac] or candidatos_zodiac
+    if not socorrista_zodiac:
+        if g2_trabaja(dia_idx, rotacion):
+            roster_z = pools.pref_zodiac
+        else:
+            roster_z = pools.pref_zodiac_reserva
+        nombre_z = zodiac_por_bloque.get(clave, roster_z[0] if roster_z else "")
 
-    socorrista_zodiac = resolver_socorrista(nombre_z, roster_z, candidatos_zodiac, bloque, set())
+        candidatos_zodiac = _sin_prioridad_invertida(
+            [s for s in soc_confirmados if s.nombre not in excluidos],
+            invertida,
+        )
+        if g2_trabaja(dia_idx, rotacion):
+            candidatos_zodiac = [s for s in candidatos_zodiac if s.nombre in pools.prefieren_zodiac] or candidatos_zodiac
+
+        socorrista_zodiac = resolver_socorrista(nombre_z, roster_z, candidatos_zodiac, bloque, set())
+
     if socorrista_zodiac:
         excluidos.add(socorrista_zodiac.nombre)
 
@@ -907,9 +970,9 @@ def asignar_puestos(
 
     fila["socorrista_chapela"] = solo_nombre(socorrista_chapela.nombre)
     fila["patron_chapela"] = solo_nombre(patron_chapela.nombre) if patron_chapela else ""
-    patrones_con_llave = confirmados([p for p in patrones if p.nombre in pools.llave_patrones]) or confirmados(
-        patrones
-    )
+    patrones_con_llave = confirmados(
+        [p for p in patrones_chapela if p.nombre in pools.llave_patrones]
+    ) or confirmados(patrones_chapela)
     titular = elegir_fijo_por_bloque(bloque_cal, pools.llave_patrones, patrones_con_llave, set()) if patrones else None
     fila["llave_chapela"] = solo_nombre(
         titular.nombre if titular else (patron_chapela.nombre if patron_chapela and not es_vacante(patron_chapela) else "")

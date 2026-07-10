@@ -79,12 +79,13 @@ disponibilidad:
   Raúl:
     laborables: true
 
-# Patrón sustituto: cubre el puesto del titular cuando libra (solo en sus días disponibles)
+# Patrón sustituto: cubre cesantes cuando el titular libra (lun–vie; nunca chapela)
 patron_sustituto:
   Raúl:
+    puesto: patron_cesantes
     cubre:
-      "Esther Román Figueroa": patron_chapela
-      "Adrián Bouzón Amoedo": patron_cesantes
+      - "Esther Román Figueroa"
+      - "Adrián Bouzón Amoedo"
 
 # Sustitutos temporales: cada uno cubre una vacante el día que trabaja
 sustitutos:
@@ -118,6 +119,9 @@ preferencias:
 
   llave_chapela_patrones:
     - "Esther Román Figueroa"
+
+  # Patrón activo ese día: solo zodiac (nunca chapela ni cesantes)
+  patron_solo_zodiac:
     - "Adrián Bouzón Amoedo"
 
   # Abrir puesto: preferencia Sergio/Robinson

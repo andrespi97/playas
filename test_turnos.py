@@ -319,7 +319,9 @@ class TestPatronSustituto(unittest.TestCase):
         cfg = cargar_config_validada()
         generar_csv(cfg, congelar=False)
         fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-13")
-        self.assertEqual(fila["patron_chapela"], "Raúl")
+        self.assertEqual(fila["patron_chapela"], "Adrián")
+        self.assertEqual(fila["patron_cesantes"], "Raúl")
+        self.assertNotEqual(fila.get("socorrista_zodiac"), "Adrián")
 
     def test_raul_cubre_adrian_laborable(self) -> None:
         cfg = cargar_config_validada()
@@ -332,6 +334,21 @@ class TestPatronSustituto(unittest.TestCase):
         generar_csv(cfg, congelar=False)
         fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-11")
         self.assertNotIn("Raúl", "".join(fila.values()))
+
+    def test_raul_no_trabaja_si_esther_y_adrian(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-15")
+        self.assertNotIn("Raúl", "".join(fila.values()))
+        self.assertEqual(fila["socorrista_zodiac"], "Adrián")
+        self.assertNotIn("Adrián", (fila.get("patron_cesantes", ""), fila.get("patron_chapela", "")))
+
+    def test_adrian_solo_zodiac_cuando_esther_trabaja(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-15")
+        self.assertEqual(fila["socorrista_zodiac"], "Adrián")
+        self.assertNotIn("Adrián", (fila.get("patron_cesantes", ""), fila.get("patron_chapela", "")))
 
 
 class TestAdministracion(CsvBackupMixin, unittest.TestCase):
