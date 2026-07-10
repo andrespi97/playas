@@ -312,7 +312,18 @@ def generar_html(
       cursor: pointer; user-select: none;
     }}
     .check-libres input {{ width: 1rem; height: 1rem; cursor: pointer; }}
-    .tabs-mes {{ display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }}
+    .btn-pdf {{
+      padding: 0.55rem 1rem; border: 1px solid var(--mar);
+      border-radius: 8px; background: var(--mar); color: #fff;
+      font: inherit; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
+    }}
+    .btn-pdf:hover {{ background: var(--mar-claro); border-color: var(--mar-claro); }}
+    .btn-pdf:disabled {{ opacity: 0.65; cursor: wait; }}
+    .tabs-mes {{
+      display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;
+      align-items: center;
+    }}
     .tab-mes {{
       padding: 0.5rem 1rem; border: 1px solid var(--borde);
       border-radius: 999px; background: var(--tarjeta);
@@ -450,9 +461,16 @@ def generar_html(
       .dia {{ min-height: 100px; }}
       .dia.vacio {{ display: none; }}
     }}
+    .pdf-export {{
+      background: #fff; color: var(--texto); padding: 0.5rem;
+    }}
+    .pdf-export.mostrar-libres .libres {{ display: flex; }}
+    .pdf-export.mostrar-extras .extras {{ display: flex; }}
+    .pdf-export .mes h2 {{ margin-bottom: 0.5rem; }}
+    .pdf-export .dia {{ box-shadow: none; min-height: 100px; }}
     @media print {{
       body {{ background: #fff; }}
-      .controles, .tabs-mes, .leyenda {{ display: none; }}
+      .controles, .tabs-mes, .leyenda, .btn-pdf {{ display: none; }}
       .mes {{ display: block !important; page-break-after: always; }}
       .dia {{ break-inside: avoid; box-shadow: none; }}
     }}
@@ -479,7 +497,12 @@ def generar_html(
         Mostrar horas extra
       </label>
     </div>
-    <nav class="tabs-mes">{mes_btns}</nav>
+    <nav class="tabs-mes">
+      {mes_btns}
+      <button type="button" class="btn-pdf" id="btn-pdf-mes" title="Descargar el mes visible en PDF">
+        Descargar PDF del mes
+      </button>
+    </nav>
     <div id="mi-resumen" class="mi-resumen"></div>
     {"".join(bloques_mes)}
     <div class="leyenda">
@@ -496,8 +519,10 @@ def generar_html(
       <span><strong>Libre</strong> · descanso (rotación 4/2)</span>
     </div>
   </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
   <script>
     const DATOS = {json.dumps(datos, ensure_ascii=False)};
+    const TITULO_PAGINA = {json.dumps(titulo, ensure_ascii=False)};
     const LIBRAN = {json.dumps(libran, ensure_ascii=False)};
     const VACACIONES = {json.dumps(vacaciones_por_fecha, ensure_ascii=False)};
     const EXTRAS = {json.dumps(extras_por_fecha, ensure_ascii=False)};
@@ -508,6 +533,53 @@ def generar_html(
     const checkLibres = document.getElementById("mostrar-libres");
     const checkExtras = document.getElementById("mostrar-extras");
     const resumen = document.getElementById("mi-resumen");
+    const btnPdf = document.getElementById("btn-pdf-mes");
+
+    async function descargarPdfMes() {{
+      const mes = document.querySelector(".mes.visible");
+      if (!mes || typeof html2pdf !== "function") return;
+      const etiquetaMes = mes.querySelector("h2")?.textContent?.trim() || mes.id;
+      const wrapper = document.createElement("div");
+      wrapper.className = "pdf-export";
+      if (document.body.classList.contains("mostrar-libres")) {{
+        wrapper.classList.add("mostrar-libres");
+      }}
+      if (document.body.classList.contains("mostrar-extras")) {{
+        wrapper.classList.add("mostrar-extras");
+      }}
+      const cab = document.createElement("header");
+      cab.className = "page";
+      cab.innerHTML = `<h1>${{TITULO_PAGINA}}</h1><p>${{etiquetaMes}}</p>`;
+      wrapper.appendChild(cab);
+      const clon = mes.cloneNode(true);
+      clon.classList.remove("visible");
+      clon.style.display = "block";
+      wrapper.appendChild(clon);
+      wrapper.style.position = "fixed";
+      wrapper.style.left = "-10000px";
+      wrapper.style.top = "0";
+      wrapper.style.width = "1100px";
+      document.body.appendChild(wrapper);
+      btnPdf.disabled = true;
+      const textoOriginal = btnPdf.textContent;
+      btnPdf.textContent = "Generando PDF…";
+      try {{
+        await html2pdf().set({{
+          margin: [8, 8, 8, 8],
+          filename: `turnos-${{mes.id.replace("mes-", "")}}.pdf`,
+          image: {{ type: "jpeg", quality: 0.95 }},
+          html2canvas: {{ scale: 2, useCORS: true, logging: false }},
+          jsPDF: {{ unit: "mm", format: "a4", orientation: "landscape" }},
+          pagebreak: {{ mode: ["avoid-all", "css", "legacy"] }},
+        }}).from(wrapper).save();
+      }} finally {{
+        document.body.removeChild(wrapper);
+        btnPdf.disabled = false;
+        btnPdf.textContent = textoOriginal;
+      }}
+    }}
+
+    btnPdf.addEventListener("click", () => {{ descargarPdfMes(); }});
 
     checkLibres.addEventListener("change", () => {{
       document.body.classList.toggle("mostrar-libres", checkLibres.checked);
