@@ -286,6 +286,7 @@ class PoolsPreferencias:
     pref_patron_chapela: list[str]
     pref_soc_chapela: list[str]
     pareja_chapela: dict[str, str]
+    sustitutos: tuple[str, ...]
 
 
 def listas_patron_sustituto(cfg: dict) -> tuple[list[str], list[str]]:
@@ -332,6 +333,7 @@ def extraer_pools(cfg: dict) -> PoolsPreferencias:
         pref_patron_chapela=prefs.get("patron_chapela", []),
         pref_soc_chapela=prefs.get("socorrista_chapela", []),
         pareja_chapela=prefs.get("pareja_chapela", {}),
+        sustitutos=tuple(solo_nombre(n) for n in cfg.get("sustitutos", [])),
     )
 
 
@@ -391,6 +393,31 @@ def _colocar_prioridad_invertida(
     if not llave_cesantes:
         return persona, socorrista_zodiac, abrir_torre
     return llave_cesantes, socorrista_zodiac, abrir_torre
+
+
+def _persona_en_puesto(
+    persona: Persona,
+    llave_cesantes: Persona | None,
+    socorrista_zodiac: Persona | None,
+    abrir_torre: Persona | None,
+) -> bool:
+    return any(
+        p is not None and p.nombre == persona.nombre
+        for p in (llave_cesantes, socorrista_zodiac, abrir_torre)
+    )
+
+
+def _ajustar_cesantes_sustitutos(nombres: list[str], sustitutos: tuple[str, ...]) -> list[str]:
+    """Cada sustituto en refuerzos sustituye una vacante (cubre el hueco)."""
+    resultado = list(nombres)
+    for nombre in resultado:
+        if nombre not in sustitutos:
+            continue
+        for i, extra in enumerate(resultado):
+            if extra.startswith("Vacante"):
+                resultado.pop(i)
+                break
+    return resultado
 
 
 def bloque_g2_activo(dia_idx: int, rotacion: dict) -> int:
@@ -966,7 +993,8 @@ def asignar_puestos(
         llave_cesantes, socorrista_zodiac, abrir_torre = _colocar_prioridad_invertida(
             persona, llave_cesantes, socorrista_zodiac, abrir_torre
         )
-        excluidos.add(persona.nombre)
+        if _persona_en_puesto(persona, llave_cesantes, socorrista_zodiac, abrir_torre):
+            excluidos.add(persona.nombre)
 
     fila["socorrista_chapela"] = solo_nombre(socorrista_chapela.nombre)
     fila["patron_chapela"] = solo_nombre(patron_chapela.nombre) if patron_chapela else ""
@@ -1009,6 +1037,7 @@ def asignar_puestos(
 
     extras_soc = [s for s in socorristas if s.nombre not in asignados]
     nombres_extra = [solo_nombre(p.nombre) for p in extras_pat + extras_soc]
+    nombres_extra = _ajustar_cesantes_sustitutos(nombres_extra, pools.sustitutos)
     fila["cesantes"] = format_lista_nombres(nombres_extra)
 
     return fila

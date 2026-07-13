@@ -461,13 +461,79 @@ def generar_html(
       .dia {{ min-height: 100px; }}
       .dia.vacio {{ display: none; }}
     }}
-    .pdf-export {{
-      background: #fff; color: var(--texto); padding: 0.5rem;
+    .pdf-overlay {{
+      position: fixed; inset: 0; z-index: 10000;
+      background: #fff; overflow: auto; padding: 12px;
+      display: flex; justify-content: center; align-items: flex-start;
     }}
+    .pdf-export {{
+      background: #fff; color: var(--texto);
+      width: 1040px; margin: 0 auto; padding: 0.25rem;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }}
+    .pdf-export header.page h1,
+    .pdf-export .mes h2 {{
+      font-family: Georgia, "Times New Roman", serif;
+    }}
+    .pdf-export header.page {{
+      margin-bottom: 0.35rem; padding-bottom: 0.25rem;
+    }}
+    .pdf-export header.page h1 {{ font-size: 1.35rem; }}
+    .pdf-export header.page p {{ font-size: 0.8rem; }}
+    .pdf-export .mes h2 {{
+      font-size: 1.1rem; margin-bottom: 0.35rem;
+    }}
+    .pdf-export .pdf-semana {{
+      margin-bottom: 0.15rem;
+    }}
+    .pdf-export .pdf-semana + .pdf-semana {{
+      margin-top: 0.3rem;
+      padding-top: 0.25rem;
+      border-top: 1px solid var(--borde);
+    }}
+    .pdf-export .cab-sem {{
+      font-size: 0.55rem; gap: 2px; margin-bottom: 2px;
+    }}
+    .pdf-export .rejilla {{
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      gap: 2px; align-items: start;
+    }}
+    .pdf-export .dia {{
+      min-height: 0 !important; height: auto !important;
+      overflow: visible !important; box-shadow: none;
+      padding: 0.2rem; border-radius: 4px;
+    }}
+    .pdf-export .dia.vacio {{
+      min-height: 0 !important; border: none; padding: 0;
+    }}
+    .pdf-export .dia.atenuado {{ opacity: 1; }}
+    .pdf-export .dia-cab {{
+      margin-bottom: 0.15rem; padding-bottom: 0.1rem;
+    }}
+    .pdf-export .dia-cab .num {{ font-size: 0.7rem; }}
+    .pdf-export .dia-cab .sem {{ font-size: 0.5rem; }}
+    .pdf-export .puestos,
+    .pdf-export .libres,
+    .pdf-export .vacaciones,
+    .pdf-export .extras {{
+      overflow: visible !important; flex: none !important;
+      gap: 1px;
+    }}
+    .pdf-export .puesto {{
+      font-size: 0.48rem; line-height: 1.12; padding: 1px 2px;
+      border-radius: 2px;
+    }}
+    .pdf-export .libre,
+    .pdf-export .vacacion,
+    .pdf-export .extra {{
+      font-size: 0.45rem; line-height: 1.12; padding: 1px 2px;
+    }}
+    .pdf-export .etiq-cubierta {{ font-size: 0.42rem; }}
     .pdf-export.mostrar-libres .libres {{ display: flex; }}
     .pdf-export.mostrar-extras .extras {{ display: flex; }}
-    .pdf-export .mes h2 {{ margin-bottom: 0.5rem; }}
-    .pdf-export .dia {{ box-shadow: none; min-height: 100px; }}
+    .pdf-pagina {{
+      width: 1040px; background: #fff;
+    }}
     @media print {{
       body {{ background: #fff; }}
       .controles, .tabs-mes, .leyenda, .btn-pdf {{ display: none; }}
@@ -519,7 +585,8 @@ def generar_html(
       <span><strong>Libre</strong> · descanso (rotación 4/2)</span>
     </div>
   </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
+  <script src="vendor/html2canvas.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
   <script>
     const DATOS = {json.dumps(datos, ensure_ascii=False)};
     const TITULO_PAGINA = {json.dumps(titulo, ensure_ascii=False)};
@@ -534,11 +601,10 @@ def generar_html(
     const checkExtras = document.getElementById("mostrar-extras");
     const resumen = document.getElementById("mi-resumen");
     const btnPdf = document.getElementById("btn-pdf-mes");
+    const PDF_SCALE = 2;
+    const SEMANAS_POR_PAGINA = 2;
 
-    async function descargarPdfMes() {{
-      const mes = document.querySelector(".mes.visible");
-      if (!mes || typeof html2pdf !== "function") return;
-      const etiquetaMes = mes.querySelector("h2")?.textContent?.trim() || mes.id;
+    function construirPdfMes(mes) {{
       const wrapper = document.createElement("div");
       wrapper.className = "pdf-export";
       if (document.body.classList.contains("mostrar-libres")) {{
@@ -547,39 +613,154 @@ def generar_html(
       if (document.body.classList.contains("mostrar-extras")) {{
         wrapper.classList.add("mostrar-extras");
       }}
+
+      const etiquetaMes = mes.querySelector("h2")?.textContent?.trim() || mes.id;
       const cab = document.createElement("header");
       cab.className = "page";
       cab.innerHTML = `<h1>${{TITULO_PAGINA}}</h1><p>${{etiquetaMes}}</p>`;
       wrapper.appendChild(cab);
-      const clon = mes.cloneNode(true);
-      clon.classList.remove("visible");
-      clon.style.display = "block";
-      wrapper.appendChild(clon);
-      wrapper.style.position = "fixed";
-      wrapper.style.left = "-10000px";
-      wrapper.style.top = "0";
-      wrapper.style.width = "1100px";
-      document.body.appendChild(wrapper);
+
+      const titulo = document.createElement("h2");
+      titulo.textContent = etiquetaMes;
+      wrapper.appendChild(titulo);
+
+      const diasSemana = [...mes.querySelectorAll(".cab-sem span")].map(s => s.textContent);
+      const dias = [...mes.querySelectorAll(".rejilla > .dia")];
+
+      for (let i = 0; i < dias.length; i += 7) {{
+        const semana = document.createElement("div");
+        semana.className = "pdf-semana";
+
+        const cabSem = document.createElement("div");
+        cabSem.className = "cab-sem";
+        diasSemana.forEach(texto => {{
+          const sp = document.createElement("span");
+          sp.textContent = texto;
+          cabSem.appendChild(sp);
+        }});
+        semana.appendChild(cabSem);
+
+        const grid = document.createElement("div");
+        grid.className = "rejilla";
+        for (let j = i; j < Math.min(i + 7, dias.length); j++) {{
+          const dia = dias[j].cloneNode(true);
+          dia.classList.remove("atenuado", "resaltado", "libre-resaltado");
+          grid.appendChild(dia);
+        }}
+        semana.appendChild(grid);
+        wrapper.appendChild(semana);
+      }}
+
+      return wrapper;
+    }}
+
+    function anadirCanvasAPdf(pdf, canvas, esPrimera) {{
+      if (canvas.width < 10 || canvas.height < 10) {{
+        throw new Error(`Captura vacía (${{canvas.width}}x${{canvas.height}})`);
+      }}
+      const margin = 6;
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const usableW = pageW - margin * 2;
+      const usableH = pageH - margin * 2;
+      const mmPerPx = 25.4 / 96;
+      let imgW = (canvas.width / PDF_SCALE) * mmPerPx;
+      let imgH = (canvas.height / PDF_SCALE) * mmPerPx;
+      if (!imgW || !imgH) throw new Error("Tamaño de imagen inválido");
+      const ratio = Math.min(usableW / imgW, usableH / imgH);
+      imgW *= ratio;
+      imgH *= ratio;
+      const x = margin + (usableW - imgW) / 2;
+      const y = margin;
+      const img = canvas.toDataURL("image/jpeg", 0.92);
+      if (!esPrimera) pdf.addPage();
+      pdf.addImage(img, "JPEG", x, y, imgW, imgH);
+    }}
+
+    async function capturarPagina(pagina) {{
+      const canvas = await html2canvas(pagina, {{
+        scale: PDF_SCALE,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+      }});
+      if (canvas.width < 10 || canvas.height < 10) {{
+        throw new Error(`Canvas vacío (${{canvas.width}}x${{canvas.height}})`);
+      }}
+      return canvas;
+    }}
+
+    async function descargarPdfMes() {{
+      const mes = document.querySelector(".mes.visible");
+      const jsPDF = window.jspdf?.jsPDF;
+      if (!mes || typeof html2canvas !== "function" || !jsPDF) {{
+        alert("No se pudo cargar el generador de PDF. Comprueba tu conexión.");
+        return;
+      }}
+
+      const overlay = document.createElement("div");
+      overlay.className = "pdf-overlay";
+      document.body.appendChild(overlay);
+
       btnPdf.disabled = true;
       const textoOriginal = btnPdf.textContent;
       btnPdf.textContent = "Generando PDF…";
+
+      const pdf = new jsPDF({{ orientation: "landscape", unit: "mm", format: "a4" }});
+
       try {{
-        await html2pdf().set({{
-          margin: [8, 8, 8, 8],
-          filename: `turnos-${{mes.id.replace("mes-", "")}}.pdf`,
-          image: {{ type: "jpeg", quality: 0.95 }},
-          html2canvas: {{ scale: 2, useCORS: true, logging: false }},
-          jsPDF: {{ unit: "mm", format: "a4", orientation: "landscape" }},
-          pagebreak: {{ mode: ["avoid-all", "css", "legacy"] }},
-        }}).from(wrapper).save();
+        if (document.fonts?.ready) {{
+          await document.fonts.ready;
+        }}
+
+        const contenido = construirPdfMes(mes);
+        const semanas = [...contenido.querySelectorAll(".pdf-semana")];
+        if (!semanas.length) throw new Error("No hay semanas para exportar");
+
+        const cabecera = contenido.querySelector("header.page");
+        const tituloMes = contenido.querySelector("h2");
+
+        let numPagina = 0;
+        for (let i = 0; i < semanas.length; i += SEMANAS_POR_PAGINA) {{
+          const pagina = document.createElement("div");
+          pagina.className = "pdf-export pdf-pagina";
+          if (document.body.classList.contains("mostrar-libres")) {{
+            pagina.classList.add("mostrar-libres");
+          }}
+          if (document.body.classList.contains("mostrar-extras")) {{
+            pagina.classList.add("mostrar-extras");
+          }}
+          if (numPagina === 0) {{
+            if (cabecera) pagina.appendChild(cabecera.cloneNode(true));
+            if (tituloMes) pagina.appendChild(tituloMes.cloneNode(true));
+          }}
+          for (let j = i; j < Math.min(i + SEMANAS_POR_PAGINA, semanas.length); j++) {{
+            pagina.appendChild(semanas[j].cloneNode(true));
+          }}
+          overlay.innerHTML = "";
+          overlay.appendChild(pagina);
+          await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+          const canvas = await capturarPagina(pagina);
+          anadirCanvasAPdf(pdf, canvas, numPagina === 0);
+          numPagina++;
+        }}
+
+        pdf.save(`turnos-${{mes.id.replace("mes-", "")}}.pdf`);
+      }} catch (err) {{
+        console.error("PDF:", err);
+        alert("No se pudo generar el PDF. Inténtalo de nuevo.");
       }} finally {{
-        document.body.removeChild(wrapper);
+        if (overlay.parentNode) document.body.removeChild(overlay);
         btnPdf.disabled = false;
         btnPdf.textContent = textoOriginal;
       }}
     }}
 
-    btnPdf.addEventListener("click", () => {{ descargarPdfMes(); }});
+    btnPdf.addEventListener("click", () => {{
+      descargarPdfMes().catch(err => console.error(err));
+    }});
 
     checkLibres.addEventListener("change", () => {{
       document.body.classList.toggle("mostrar-libres", checkLibres.checked);

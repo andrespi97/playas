@@ -42,6 +42,7 @@ from turnos_common import (  # noqa: E402
     parse_fecha,
     parse_horas_extras,
     parse_lista_nombres,
+    nombres_asignados_dia,
     sustitutos_presentes_fila,
 )
 
@@ -297,6 +298,24 @@ class TestSustitutos(unittest.TestCase):
         self.assertEqual(len(cubiertas), 1)
         self.assertEqual(cubiertas[0]["sustituto"], "Arturo")
         self.assertTrue(str(cubiertas[0]["persona"]).startswith("Vacante"))
+
+    def test_arturo_en_dias_disponibilidad_julio(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        fechas = (
+            "2026-07-15",
+            "2026-07-16",
+            "2026-07-21",
+            "2026-07-22",
+            "2026-07-27",
+            "2026-07-28",
+        )
+        sustitutos = cfg.get("sustitutos", [])
+        for fecha in fechas:
+            fila = next(f for f in cargar_filas_csv() if f["fecha"] == fecha)
+            presentes = sustitutos_presentes_fila(fila, sustitutos)
+            self.assertIn("Arturo", presentes, f"Arturo ausente el {fecha}")
+            self.assertIn("Arturo", nombres_asignados_dia(fila), f"Arturo no asignado el {fecha}")
 
     def test_asignado_no_aparece_como_libre(self) -> None:
         from generar_turnos import libran_por_fecha

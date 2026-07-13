@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import shutil
 from datetime import date, datetime
 from pathlib import Path
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).parent
 CONFIG_PATH = ROOT / "config.yaml"
 CSV_PATH = ROOT / "turnos_jul_sep_2026.csv"
 HTML_PATH = ROOT / "turnos.html"
+VENDOR_DIR = ROOT / "vendor"
 PAGES_DIR = ROOT / "docs"
 PAGES_INDEX_PATH = PAGES_DIR / "index.html"
 PAGES_NOJEKYLL_PATH = PAGES_DIR / ".nojekyll"
@@ -240,6 +242,8 @@ def publicar_html_github_pages(origen: Path | None = None) -> Path:
     origen = origen or HTML_PATH
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     PAGES_INDEX_PATH.write_text(origen.read_text(encoding="utf-8"), encoding="utf-8")
+    if VENDOR_DIR.is_dir():
+        shutil.copytree(VENDOR_DIR, PAGES_DIR / "vendor", dirs_exist_ok=True)
     # Evita que GitHub Pages ejecute Jekyll (sitio estático).
     PAGES_NOJEKYLL_PATH.touch(exist_ok=True)
     return PAGES_INDEX_PATH
