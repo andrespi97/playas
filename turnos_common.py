@@ -220,17 +220,46 @@ def sustitutos_presentes_fila(fila: dict[str, str], sustitutos: list[str]) -> li
     return [solo_nombre(nombre) for nombre in sustitutos if solo_nombre(nombre) in asignados and solo_nombre(nombre) not in ausentes]
 
 
+def cubridores_vacantes_fila(fila: dict[str, str], sustitutos: list[str]) -> list[str]:
+    """Personas que cubren vacantes: sustitutos asignados y trabajadores en horas_extras."""
+    ausentes = set(parse_lista_nombres(fila.get("vacaciones", "")))
+    asignados = set(nombres_asignados_dia(fila))
+    cubridores: list[str] = []
+    vistos: set[str] = set()
+
+    for nombre in sustitutos:
+        sn = solo_nombre(nombre)
+        if sn in ausentes or sn in vistos:
+            continue
+        if sn in asignados:
+            cubridores.append(sn)
+            vistos.add(sn)
+
+    try:
+        extras = parse_horas_extras(fila.get("horas_extras", ""))
+    except ValueError:
+        extras = {}
+    for nombre in extras:
+        sn = solo_nombre(nombre)
+        if sn in ausentes or sn in vistos:
+            continue
+        cubridores.append(sn)
+        vistos.add(sn)
+
+    return cubridores
+
+
 def marcar_vacantes_cubiertas(
     puestos: list[dict[str, str | bool]],
-    sustitutos_presentes: list[str],
+    cubridores: list[str],
 ) -> None:
-    """Etiqueta las primeras N vacantes como cubiertas (N = sustitutos presentes)."""
-    if not sustitutos_presentes:
+    """Etiqueta las primeras N vacantes como cubiertas (N = cubridores)."""
+    if not cubridores:
         return
     vacantes = [i for i, p in enumerate(puestos) if str(p.get("persona", "")).startswith("Vacante")]
-    for idx, sustituto in zip(vacantes, sustitutos_presentes):
+    for idx, cubridor in zip(vacantes, cubridores):
         puestos[idx]["vacante_cubierta"] = True
-        puestos[idx]["sustituto"] = sustituto
+        puestos[idx]["sustituto"] = cubridor
 
 
 def fila_vacia_admin() -> dict[str, str]:

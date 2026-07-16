@@ -26,8 +26,8 @@ from turnos_common import (
     parse_lista_nombres,
     publicar_html_github_pages,
     marcar_vacantes_cubiertas,
+    cubridores_vacantes_fila,
     sin_vacantes_roster,
-    sustitutos_presentes_fila,
 )
 
 MESES = (
@@ -107,7 +107,7 @@ def puestos_dia(fila: dict[str, str], sustitutos: list[str] | None = None) -> li
     for nombre in parse_lista_nombres(fila.get("cesantes", "")):
         anadir("cesantes", nombre)
 
-    marcar_vacantes_cubiertas(puestos, sustitutos_presentes_fila(fila, sustitutos or []))
+    marcar_vacantes_cubiertas(puestos, cubridores_vacantes_fila(fila, sustitutos or []))
     return puestos
 
 
@@ -579,7 +579,7 @@ def generar_html(
       <span><strong>Torre</strong></span>
       <span><strong>Cesantes</strong> · refuerzo / vacante (varios con ;)</span>
       <span><strong>Vacante</strong> · hueco sin cubrir (rosa)</span>
-      <span><strong>Cubierta</strong> · sustituto temporal (verde) · Arturo / Anxo / Raúl</span>
+      <span><strong>Cubierta</strong> · sustituto o extra (verde)</span>
       <span><strong>Vacaciones</strong> · no disponible (naranja)</span>
       <span><strong>Extra</strong> · horas extras (morado)</span>
       <span><strong>Libre</strong> · descanso (rotación 4/2)</span>

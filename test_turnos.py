@@ -43,6 +43,7 @@ from turnos_common import (  # noqa: E402
     parse_horas_extras,
     parse_lista_nombres,
     nombres_asignados_dia,
+    cubridores_vacantes_fila,
     sustitutos_presentes_fila,
 )
 
@@ -298,6 +299,38 @@ class TestSustitutos(unittest.TestCase):
         self.assertEqual(len(cubiertas), 1)
         self.assertEqual(cubiertas[0]["sustituto"], "Arturo")
         self.assertTrue(str(cubiertas[0]["persona"]).startswith("Vacante"))
+
+    def test_extra_normal_cubre_vacante(self) -> None:
+        from generar_vista import puestos_dia
+
+        fila = {
+            "fecha": "2026-07-10",
+            "socorrista_chapela": "Fernando",
+            "cesantes": "Vacante 1; Vacante 2",
+            "vacaciones": "",
+            "horas_extras": "Esther:8",
+        }
+        puestos = puestos_dia(fila, ["Arturo", "Anxo"])
+        cubiertas = [p for p in puestos if p.get("vacante_cubierta")]
+        self.assertEqual(len(cubiertas), 1)
+        self.assertEqual(cubiertas[0]["sustituto"], "Esther")
+        self.assertEqual(cubridores_vacantes_fila(fila, ["Arturo", "Anxo"]), ["Esther"])
+
+    def test_sustituto_y_extra_cubren_dos_vacantes(self) -> None:
+        from generar_vista import puestos_dia
+
+        fila = {
+            "fecha": "2026-07-10",
+            "socorrista_chapela": "Fernando",
+            "abrir_torre": "Arturo",
+            "cesantes": "Vacante 1; Vacante 2",
+            "vacaciones": "",
+            "horas_extras": "Esther:8",
+        }
+        puestos = puestos_dia(fila, ["Arturo", "Anxo"])
+        cubiertas = [p for p in puestos if p.get("vacante_cubierta")]
+        self.assertEqual(len(cubiertas), 2)
+        self.assertEqual([p["sustituto"] for p in cubiertas], ["Arturo", "Esther"])
 
     def test_arturo_en_dias_disponibilidad_julio(self) -> None:
         cfg = cargar_config_validada()
