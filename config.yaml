@@ -9,11 +9,12 @@ periodo:
 # - pasado_automatico: conserva hoy y días anteriores (por defecto true)
 # - hasta: fija manualmente hasta qué fecha incluir (útil tras editar el CSV)
 # Edición manual: cambia turnos_jul_sep_2026.csv; marca bloqueado=1 en días que no quieras recalcular
-# Publicar web: python3 generar_turnos.py copia turnos.html → docs/index.html; luego git push
+# Publicar web: python3 generar_vista.py genera turnos.html + horas.html → docs/; luego git push
+# Pantallas: Cuadrante (calendario) y Horas (totales mensuales turno + extras)
 # Columnas admin (mismo CSV):
 #   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
 #   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
-#   horas_extras — Nombre:horas; Nombre:horas (solo manual)
+#   horas_extras — Nombre:horas; Nombre:horas (solo manual; alimenta la pantalla Horas)
 #   bloqueado    — 1 o x: la fila no se toca NUNCA al regenerar (ni con --regenerar-todo)
 congelado:
   pasado_automatico: true

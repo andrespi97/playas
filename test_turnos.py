@@ -38,12 +38,14 @@ from turnos_common import (  # noqa: E402
     cargar_config,
     cargar_filas_csv,
     celda_bloqueada,
+    contar_horas_fila,
+    contar_horas_por_mes,
+    cubridores_vacantes_fila,
     fecha_congelacion_limite,
+    nombres_asignados_dia,
     parse_fecha,
     parse_horas_extras,
     parse_lista_nombres,
-    nombres_asignados_dia,
-    cubridores_vacantes_fila,
     sustitutos_presentes_fila,
 )
 
@@ -498,6 +500,72 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
     def test_parse_vacaciones_y_extras(self) -> None:
         self.assertEqual(parse_lista_nombres("Esther; Fernando"), ["Esther", "Fernando"])
         self.assertEqual(parse_horas_extras("Esther:4; Adrián:6.5"), {"Esther": 4.0, "Adrián": 6.5})
+
+    def test_contar_horas_fila_turno_y_extras(self) -> None:
+        # Día ordinario: asignado sin extras → 8 h turno
+        ordinario = contar_horas_fila(
+            {
+                "socorrista_chapela": "Fernando",
+                "patron_chapela": "Esther",
+                "llave_cesantes": "Sergio",
+                "cesantes": "Vacante 1",
+                "horas_extras": "",
+            }
+        )
+        self.assertEqual(ordinario["Fernando"]["horas_turno"], 8.0)
+        self.assertEqual(ordinario["Fernando"]["horas_extras"], 0.0)
+        self.assertNotIn("Vacante 1", ordinario)
+
+        # Extra puro (sin puesto): solo extras
+        solo_extra = contar_horas_fila(
+            {
+                "socorrista_chapela": "Fernando",
+                "horas_extras": "Adrián:8",
+            }
+        )
+        self.assertEqual(solo_extra["Adrián"]["horas_extras"], 8.0)
+        self.assertEqual(solo_extra["Adrián"]["horas_turno"], 0.0)
+        self.assertEqual(solo_extra["Fernando"]["horas_turno"], 8.0)
+
+        # Asignado + extras el mismo día: no duplica jornada
+        ambos = contar_horas_fila(
+            {
+                "socorrista_chapela": "Fernando",
+                "patron_chapela": "Esther",
+                "horas_extras": "Fernando:8;Esther:8",
+            }
+        )
+        self.assertEqual(ambos["Fernando"]["horas_turno"], 0.0)
+        self.assertEqual(ambos["Fernando"]["horas_extras"], 8.0)
+        self.assertEqual(ambos["Esther"]["horas_extras"], 8.0)
+
+    def test_contar_horas_por_mes_agrega(self) -> None:
+        filas = [
+            {
+                "fecha": "2026-07-01",
+                "socorrista_chapela": "Fernando",
+                "horas_extras": "",
+            },
+            {
+                "fecha": "2026-07-02",
+                "socorrista_chapela": "Fernando",
+                "horas_extras": "Fernando:4",
+            },
+            {
+                "fecha": "2026-08-01",
+                "socorrista_chapela": "Fernando",
+                "horas_extras": "",
+            },
+        ]
+        por_mes = contar_horas_por_mes(filas, plantilla=["Fernando", "Esther"])
+        jul = por_mes[(2026, 7)]["Fernando"]
+        self.assertEqual(jul["dias_turno"], 1)
+        self.assertEqual(jul["horas_turno"], 8.0)
+        self.assertEqual(jul["dias_extra"], 1)
+        self.assertEqual(jul["horas_extras"], 4.0)
+        self.assertEqual(jul["total"], 12.0)
+        self.assertEqual(por_mes[(2026, 7)]["Esther"]["total"], 0.0)
+        self.assertEqual(por_mes[(2026, 8)]["Fernando"]["horas_turno"], 8.0)
 
     def test_vacaciones_solo_manuales(self) -> None:
         cfg = cargar_config_validada()

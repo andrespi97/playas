@@ -13,10 +13,15 @@ ROOT = Path(__file__).parent
 CONFIG_PATH = ROOT / "config.yaml"
 CSV_PATH = ROOT / "turnos_jul_sep_2026.csv"
 HTML_PATH = ROOT / "turnos.html"
+HORAS_HTML_PATH = ROOT / "horas.html"
 VENDOR_DIR = ROOT / "vendor"
 PAGES_DIR = ROOT / "docs"
 PAGES_INDEX_PATH = PAGES_DIR / "index.html"
+PAGES_HORAS_PATH = PAGES_DIR / "horas.html"
 PAGES_NOJEKYLL_PATH = PAGES_DIR / ".nojekyll"
+
+# Jornada ordinaria de un día asignado sin marca de horas_extras
+HORAS_JORNADA = 8.0
 
 # Puestos que cuentan como asignación (llave_chapela es metadato)
 PUESTOS_ASIGNACION = (
@@ -194,6 +199,104 @@ def format_horas_extras(extras: dict[str, float]) -> str:
     )
 
 
+def es_nombre_vacante(nombre: str) -> bool:
+    return bool(nombre) and nombre.startswith("Vacante")
+
+
+def contar_horas_fila(
+    fila: dict[str, str],
+    *,
+    horas_jornada: float = HORAS_JORNADA,
+) -> dict[str, dict[str, float | int]]:
+    """Horas de turno y extras por persona en un día.
+
+    - Si figura en horas_extras: cuenta esas horas como extras (no se suma jornada).
+    - Si está asignado y no tiene extras ese día: suma horas_jornada como turno.
+    - Las vacantes no cuentan.
+    """
+    try:
+        extras = parse_horas_extras(fila.get("horas_extras", ""))
+    except ValueError:
+        extras = {}
+    asignados = [
+        n for n in nombres_asignados_dia(fila) if not es_nombre_vacante(n)
+    ]
+    resultado: dict[str, dict[str, float | int]] = {}
+
+    def fila_persona(nombre: str) -> dict[str, float | int]:
+        if nombre not in resultado:
+            resultado[nombre] = {
+                "dias_turno": 0,
+                "horas_turno": 0.0,
+                "dias_extra": 0,
+                "horas_extras": 0.0,
+            }
+        return resultado[nombre]
+
+    for nombre, horas in extras.items():
+        if es_nombre_vacante(nombre):
+            continue
+        p = fila_persona(nombre)
+        p["dias_extra"] = int(p["dias_extra"]) + 1
+        p["horas_extras"] = float(p["horas_extras"]) + float(horas)
+
+    for nombre in asignados:
+        if nombre in extras:
+            continue
+        p = fila_persona(nombre)
+        p["dias_turno"] = int(p["dias_turno"]) + 1
+        p["horas_turno"] = float(p["horas_turno"]) + float(horas_jornada)
+
+    return resultado
+
+
+def contar_horas_por_mes(
+    filas: list[dict[str, str]],
+    *,
+    horas_jornada: float = HORAS_JORNADA,
+    plantilla: list[str] | None = None,
+) -> dict[tuple[int, int], dict[str, dict[str, float | int]]]:
+    """Totales por (año, mes) y persona: dias_turno, horas_turno, dias_extra, horas_extras, total."""
+    por_mes: dict[tuple[int, int], dict[str, dict[str, float | int]]] = {}
+    for fila in filas:
+        d = parse_fecha(fila["fecha"])
+        clave = (d.year, d.month)
+        mes = por_mes.setdefault(clave, {})
+        for nombre, parcial in contar_horas_fila(fila, horas_jornada=horas_jornada).items():
+            dest = mes.setdefault(
+                nombre,
+                {
+                    "dias_turno": 0,
+                    "horas_turno": 0.0,
+                    "dias_extra": 0,
+                    "horas_extras": 0.0,
+                    "total": 0.0,
+                },
+            )
+            dest["dias_turno"] = int(dest["dias_turno"]) + int(parcial["dias_turno"])
+            dest["horas_turno"] = float(dest["horas_turno"]) + float(parcial["horas_turno"])
+            dest["dias_extra"] = int(dest["dias_extra"]) + int(parcial["dias_extra"])
+            dest["horas_extras"] = float(dest["horas_extras"]) + float(parcial["horas_extras"])
+            dest["total"] = float(dest["horas_turno"]) + float(dest["horas_extras"])
+
+    if plantilla:
+        for mes in por_mes.values():
+            for nombre in plantilla:
+                if es_nombre_vacante(nombre):
+                    continue
+                mes.setdefault(
+                    nombre,
+                    {
+                        "dias_turno": 0,
+                        "horas_turno": 0.0,
+                        "dias_extra": 0,
+                        "horas_extras": 0.0,
+                        "total": 0.0,
+                    },
+                )
+    return por_mes
+
+
 def nombres_asignados_dia(fila: dict[str, str]) -> list[str]:
     """Nombres de pila asignados ese día (puestos + cesantes)."""
     nombres: list[str] = []
@@ -266,11 +369,20 @@ def fila_vacia_admin() -> dict[str, str]:
     return {col: "" for col in COLUMNAS_ADMIN}
 
 
-def publicar_html_github_pages(origen: Path | None = None) -> Path:
-    """Copia el HTML generado a docs/index.html (GitHub Pages)."""
+def publicar_html_github_pages(
+    origen: Path | None = None,
+    *,
+    horas: Path | None = None,
+) -> Path:
+    """Copia el HTML generado a docs/ (GitHub Pages)."""
     origen = origen or HTML_PATH
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     PAGES_INDEX_PATH.write_text(origen.read_text(encoding="utf-8"), encoding="utf-8")
+    horas_origen = horas if horas is not None else (
+        HORAS_HTML_PATH if HORAS_HTML_PATH.exists() else None
+    )
+    if horas_origen is not None and horas_origen.exists():
+        PAGES_HORAS_PATH.write_text(horas_origen.read_text(encoding="utf-8"), encoding="utf-8")
     if VENDOR_DIR.is_dir():
         shutil.copytree(VENDOR_DIR, PAGES_DIR / "vendor", dirs_exist_ok=True)
     # Evita que GitHub Pages ejecute Jekyll (sitio estático).

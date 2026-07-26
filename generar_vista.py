@@ -15,11 +15,15 @@ from turnos_common import (
     CONFIG_PATH,
     CSV_PATH,
     ETIQUETAS_VISTA,
+    HORAS_HTML_PATH,
+    HORAS_JORNADA,
     HTML_PATH,
+    PAGES_HORAS_PATH,
     PAGES_INDEX_PATH,
     PUESTOS_ASIGNACION,
     cargar_config,
     cargar_filas_csv,
+    contar_horas_por_mes,
     etiqueta_periodo,
     parse_fecha,
     parse_horas_extras,
@@ -48,6 +52,113 @@ MESES = (
 DIAS_SEM = ("L", "M", "X", "J", "V", "S", "D")
 
 ICONO_LLAVE = '<span class="icono-llave" title="Lleva la llave">🔑</span>'
+
+
+def formatear_horas(valor: float | int) -> str:
+    n = float(valor)
+    if n == int(n):
+        return str(int(n))
+    return f"{n:g}"
+
+
+def nav_pantallas(activa: str, *, pages: bool = False) -> str:
+    """Enlaces entre cuadrante y resumen de horas."""
+    cuadrante = "index.html" if pages else "turnos.html"
+    horas = "horas.html"
+    items = [
+        ("cuadrante", cuadrante, "Cuadrante"),
+        ("horas", horas, "Horas"),
+    ]
+    enlaces = []
+    for clave, href, label in items:
+        clase = ' class="activo"' if clave == activa else ""
+        enlaces.append(f'<a href="{href}"{clase}>{html.escape(label)}</a>')
+    return f'<nav class="nav-pantallas" aria-label="Pantallas">{"".join(enlaces)}</nav>'
+
+
+def estilos_comunes() -> str:
+    return """
+    :root {
+      --arena: #f4efe6;
+      --mar: #0c4a6e;
+      --mar-claro: #0369a1;
+      --espuma: #e0f2fe;
+      --sol: #f59e0b;
+      --texto: #1e293b;
+      --muted: #64748b;
+      --borde: #cbd5e1;
+      --tarjeta: #ffffff;
+      --resalt: #fef3c7;
+      --resalt-borde: #f59e0b;
+      --sombra: 0 4px 24px rgba(12, 74, 110, 0.08);
+      --extra: #6d28d9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--arena);
+      color: var(--texto);
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse at 0% 0%, rgba(3, 105, 161, 0.07) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 100%, rgba(245, 158, 11, 0.06) 0%, transparent 45%);
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+    header.page {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid var(--mar);
+    }
+    header.page h1 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(1.75rem, 5vw, 2.5rem);
+      font-weight: 400;
+      color: var(--mar);
+      line-height: 1.1;
+    }
+    header.page p { color: var(--muted); margin-top: 0.35rem; font-size: 0.95rem; }
+    .nav-pantallas {
+      display: flex; flex-wrap: wrap; gap: 0.5rem;
+      margin: 1rem 0 0;
+    }
+    .nav-pantallas a {
+      padding: 0.45rem 1rem;
+      border: 1px solid var(--borde);
+      border-radius: 999px;
+      background: var(--tarjeta);
+      color: var(--mar);
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .nav-pantallas a:hover { background: var(--espuma); }
+    .nav-pantallas a.activo {
+      background: var(--mar);
+      color: #fff;
+      border-color: var(--mar);
+    }
+    .tabs-mes {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;
+      align-items: center;
+    }
+    .tab-mes {
+      padding: 0.5rem 1rem; border: 1px solid var(--borde);
+      border-radius: 999px; background: var(--tarjeta);
+      font: inherit; font-weight: 600; cursor: pointer; color: var(--mar);
+      transition: background 0.15s, color 0.15s;
+    }
+    .tab-mes:hover { background: var(--espuma); }
+    .tab-mes.activo { background: var(--mar); color: #fff; border-color: var(--mar); }
+    .mes { display: none; animation: fade 0.25s ease; }
+    .mes.visible { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .mes h2 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: 1.5rem; font-weight: 400; color: var(--mar);
+      margin-bottom: 0.75rem;
+    }
+"""
 
 
 def etiqueta_campo(campo: str) -> str:
@@ -157,6 +268,8 @@ def generar_html(
     titulo: str,
     subtitulo: str,
     cfg: dict,
+    *,
+    pages: bool = False,
 ) -> str:
     por_mes = filas_por_mes(filas)
     trabajadores = nombres_plantilla(cfg) if cfg else nombres_unicos(filas)
@@ -534,9 +647,30 @@ def generar_html(
     .pdf-pagina {{
       width: 1040px; background: #fff;
     }}
+    .nav-pantallas {{
+      display: flex; flex-wrap: wrap; gap: 0.5rem;
+      margin: 1rem 0 0;
+    }}
+    .nav-pantallas a {{
+      padding: 0.45rem 1rem;
+      border: 1px solid var(--borde);
+      border-radius: 999px;
+      background: var(--tarjeta);
+      color: var(--mar);
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }}
+    .nav-pantallas a:hover {{ background: var(--espuma); }}
+    .nav-pantallas a.activo {{
+      background: var(--mar);
+      color: #fff;
+      border-color: var(--mar);
+    }}
     @media print {{
       body {{ background: #fff; }}
-      .controles, .tabs-mes, .leyenda, .btn-pdf {{ display: none; }}
+      .controles, .tabs-mes, .leyenda, .btn-pdf, .nav-pantallas {{ display: none; }}
       .mes {{ display: block !important; page-break-after: always; }}
       .dia {{ break-inside: avoid; box-shadow: none; }}
     }}
@@ -547,6 +681,7 @@ def generar_html(
     <header class="page">
       <h1>{html.escape(titulo)}</h1>
       <p>{html.escape(subtitulo)} · 4 días trabajo / 2 libres</p>
+      {nav_pantallas("cuadrante", pages=pages)}
     </header>
     <div class="controles">
       <label for="filtro">Ver turnos de:</label>
@@ -856,6 +991,174 @@ def generar_html(
 </html>"""
 
 
+def generar_html_horas(
+    filas: list[dict[str, str]],
+    titulo: str,
+    subtitulo: str,
+    cfg: dict,
+    *,
+    pages: bool = False,
+) -> str:
+    plantilla = nombres_plantilla(cfg) if cfg else [
+        n for n in nombres_unicos(filas) if not n.startswith("Vacante")
+    ]
+    por_mes = contar_horas_por_mes(filas, horas_jornada=HORAS_JORNADA, plantilla=plantilla)
+    meses_nav = [
+        {"y": y, "m": m, "label": f"{MESES[m]} {y}"}
+        for (y, m) in sorted(por_mes.keys())
+    ]
+    mes_btns = "".join(
+        f'<button type="button" class="tab-mes" data-target="horas-{m["y"]}-{m["m"]:02d}">'
+        f'{html.escape(m["label"])}</button>'
+        for m in meses_nav
+    )
+
+    bloques: list[str] = []
+    for y, m in sorted(por_mes.keys()):
+        personas = por_mes[(y, m)]
+        filas_tabla = sorted(
+            personas.items(),
+            key=lambda par: (-float(par[1]["total"]), par[0].casefold()),
+        )
+        total_turno = sum(float(p["horas_turno"]) for _, p in filas_tabla)
+        total_extras = sum(float(p["horas_extras"]) for _, p in filas_tabla)
+        total_todo = total_turno + total_extras
+        filas_html = []
+        for nombre, datos in filas_tabla:
+            clase = " class=\"sin-horas\"" if float(datos["total"]) == 0 else ""
+            filas_html.append(
+                f"<tr{clase}>"
+                f'<td class="nombre">{html.escape(nombre)}</td>'
+                f'<td class="num">{int(datos["dias_turno"])}</td>'
+                f'<td class="num">{html.escape(formatear_horas(datos["horas_turno"]))} h</td>'
+                f'<td class="num">{int(datos["dias_extra"])}</td>'
+                f'<td class="num extras">{html.escape(formatear_horas(datos["horas_extras"]))} h</td>'
+                f'<td class="num total">{html.escape(formatear_horas(datos["total"]))} h</td>'
+                f"</tr>"
+            )
+        bloques.append(
+            f'<section class="mes" id="horas-{y}-{m:02d}">'
+            f"<h2>{MESES[m]} {y}</h2>"
+            f'<div class="tabla-wrap"><table class="tabla-horas">'
+            f"<thead><tr>"
+            f"<th>Persona</th>"
+            f'<th title="Días de turno ordinario">Días turno</th>'
+            f'<th title="{formatear_horas(HORAS_JORNADA)} h por día asignado sin extras">Horas turno</th>'
+            f'<th title="Días con horas_extras">Días extra</th>'
+            f"<th>Horas extras</th>"
+            f"<th>Total</th>"
+            f"</tr></thead>"
+            f'<tbody>{"".join(filas_html)}</tbody>'
+            f"<tfoot><tr>"
+            f"<td>Total plantilla</td>"
+            f"<td></td>"
+            f'<td class="num">{html.escape(formatear_horas(total_turno))} h</td>'
+            f"<td></td>"
+            f'<td class="num extras">{html.escape(formatear_horas(total_extras))} h</td>'
+            f'<td class="num total">{html.escape(formatear_horas(total_todo))} h</td>'
+            f"</tr></tfoot>"
+            f"</table></div></section>"
+        )
+
+    jornada_txt = formatear_horas(HORAS_JORNADA)
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(titulo)} · Horas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+{estilos_comunes()}
+    .nota {{
+      background: var(--tarjeta);
+      border: 1px solid var(--borde);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.45;
+      box-shadow: var(--sombra);
+    }}
+    .nota strong {{ color: var(--mar); }}
+    .tabla-wrap {{
+      overflow-x: auto;
+      background: var(--tarjeta);
+      border: 1px solid var(--borde);
+      border-radius: 14px;
+      box-shadow: var(--sombra);
+    }}
+    .tabla-horas {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }}
+    .tabla-horas th,
+    .tabla-horas td {{
+      padding: 0.7rem 0.9rem;
+      text-align: left;
+      border-bottom: 1px solid var(--borde);
+    }}
+    .tabla-horas th {{
+      background: var(--espuma);
+      color: var(--mar);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-weight: 700;
+      white-space: nowrap;
+    }}
+    .tabla-horas td.num,
+    .tabla-horas th:not(:first-child) {{ text-align: right; }}
+    .tabla-horas td.nombre {{ font-weight: 600; }}
+    .tabla-horas td.extras {{ color: #6d28d9; font-weight: 600; }}
+    .tabla-horas td.total {{ font-weight: 700; color: var(--mar); }}
+    .tabla-horas tbody tr:hover {{ background: #fffbeb; }}
+    .tabla-horas tr.sin-horas {{ opacity: 0.45; }}
+    .tabla-horas tfoot td {{
+      background: #f8fafc;
+      font-weight: 700;
+      border-bottom: none;
+      color: var(--mar);
+    }}
+    @media (max-width: 640px) {{
+      .tabla-horas {{ font-size: 0.85rem; }}
+      .tabla-horas th, .tabla-horas td {{ padding: 0.55rem 0.6rem; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="page">
+      <h1>Horas · {html.escape(titulo)}</h1>
+      <p>{html.escape(subtitulo)} · resumen mensual por persona</p>
+      {nav_pantallas("horas", pages=pages)}
+    </header>
+    <p class="nota">
+      <strong>Horas turno:</strong> {jornada_txt} h por cada día asignado sin marca de extras.
+      <strong>Horas extras:</strong> suma de la columna <code>horas_extras</code> del CSV
+      (si un día tiene extras, ese día cuenta solo como extra, no se duplica la jornada).
+    </p>
+    <nav class="tabs-mes">{mes_btns}</nav>
+    {"".join(bloques)}
+  </div>
+  <script>
+    const tabs = document.querySelectorAll(".tab-mes");
+    const meses = document.querySelectorAll(".mes");
+    function activarMes(id) {{
+      meses.forEach(m => m.classList.toggle("visible", m.id === id));
+      tabs.forEach(t => t.classList.toggle("activo", t.dataset.target === id));
+    }}
+    tabs.forEach(t => t.addEventListener("click", () => activarMes(t.dataset.target)));
+    if (tabs.length) activarMes(tabs[0].dataset.target);
+  </script>
+</body>
+</html>"""
+
+
 def main() -> int:
     if not CSV_PATH.exists():
         print(f"No se encuentra {CSV_PATH}. Ejecuta primero generar_turnos.py", file=sys.stderr)
@@ -867,9 +1170,26 @@ def main() -> int:
     titulo = f"Turnos playas {anio}"
     subtitulo = etiqueta_periodo(cfg) if cfg else ""
 
-    HTML_PATH.write_text(generar_html(filas, titulo, subtitulo, cfg), encoding="utf-8")
-    pages = publicar_html_github_pages()
+    HTML_PATH.write_text(
+        generar_html(filas, titulo, subtitulo, cfg, pages=False),
+        encoding="utf-8",
+    )
+    HORAS_HTML_PATH.write_text(
+        generar_html_horas(filas, titulo, subtitulo, cfg, pages=False),
+        encoding="utf-8",
+    )
+    pages = publicar_html_github_pages(HTML_PATH, horas=HORAS_HTML_PATH)
+    # Enlaces correctos para GitHub Pages (index.html en vez de turnos.html)
+    PAGES_INDEX_PATH.write_text(
+        generar_html(filas, titulo, subtitulo, cfg, pages=True),
+        encoding="utf-8",
+    )
+    PAGES_HORAS_PATH.write_text(
+        generar_html_horas(filas, titulo, subtitulo, cfg, pages=True),
+        encoding="utf-8",
+    )
     print(f"HTML generado: {HTML_PATH}")
+    print(f"Horas: {HORAS_HTML_PATH}")
     print(f"GitHub Pages: {pages}")
     return 0
 
