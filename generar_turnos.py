@@ -23,8 +23,9 @@ from turnos_common import (
     columnas_csv_completas,
     cargar_config,
     celda_bloqueada,
+    cargar_existentes_csv,
     fecha_congelacion_limite,
-    filas_csv_por_fecha,
+    filas_bloqueadas_por_fecha,
     format_lista_nombres,
     normalizar_fila_csv,
     parse_fecha,
@@ -1095,8 +1096,10 @@ def generar_csv(
 
     limite: date | None = None
     existentes: dict[str, dict[str, str]] = {}
+    bloqueados_originales: dict[str, dict[str, str]] = {}
     if CSV_PATH.exists():
-        existentes = {k: normalizar_fila_csv(v) for k, v in filas_csv_por_fecha().items()}
+        bloqueados_originales = filas_bloqueadas_por_fecha()
+        existentes = cargar_existentes_csv()
     if congelar:
         limites: list[date] = []
         if auto := fecha_congelacion_limite(cfg, hoy):
@@ -1119,17 +1122,18 @@ def generar_csv(
         )
 
         previa = existentes.get(fecha_str)
-        bloqueada = previa is not None and celda_bloqueada(previa.get("bloqueado", ""))
+        bloqueada = fecha_str in bloqueados_originales
         congelada_rango = (
             congelar
             and limite is not None
             and fecha <= limite
             and previa is not None
+            and not bloqueada
         )
 
         if bloqueada:
-            # Copia literal: bloqueado=1 manda siempre, aunque congelar=False o --regenerar-todo
-            fila = dict(previa)
+            # Copia literal del snapshot inicial: bloqueado=1 no se regenera nunca.
+            fila = dict(bloqueados_originales[fecha_str])
             fila["fecha"] = fecha_str
             n_congelados += 1
             fechas_congeladas.add(fecha_str)
@@ -1187,6 +1191,9 @@ def generar_csv(
         else:
             prefijo = fecha_str
 
+        if bloqueada:
+            continue
+
         if dup := validar_sin_duplicados(fila):
             errores.append(f"{prefijo}: {dup}")
         elif adm := validar_administracion(fila, personas):
@@ -1207,6 +1214,13 @@ def generar_csv(
     if errores:
         raise ErrorGeneracion(errores)
 
+    for idx, fila in enumerate(filas):
+        fecha_str = fila["fecha"]
+        if fecha_str in bloqueados_originales:
+            restaurada = dict(bloqueados_originales[fecha_str])
+            restaurada["fecha"] = fecha_str
+            filas[idx] = restaurada
+
     columnas = columnas_csv_completas()
     with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=columnas, extrasaction="ignore")
@@ -1214,18 +1228,14 @@ def generar_csv(
         for fila in filas:
             writer.writerow(fila)
 
-    return CSV_PATH, len(filas), n_congelados, limite
+    n_bloqueados = len(bloqueados_originales)
+    return CSV_PATH, len(filas), n_congelados, limite, n_bloqueados
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description="Genera el cuadrante de turnos (CSV + HTML).")
-    parser.add_argument(
-        "--regenerar-todo",
-        action="store_true",
-        help="Ignora congelado por fecha; las filas con bloqueado=1 no se tocan",
-    )
     parser.add_argument(
         "--congelar-hasta",
         metavar="FECHA",
@@ -1247,9 +1257,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         cfg = cargar_config_validada()
-        out, n, n_cong, limite = generar_csv(
+        out, n, n_cong, limite, n_bloqueados = generar_csv(
             cfg,
-            congelar=not args.regenerar_todo,
             congelar_hasta=congelar_hasta,
         )
     except ErrorConfig as e:
@@ -1264,13 +1273,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"CSV generado: {out} ({n} días)")
-    if args.regenerar_todo:
-        print("  Regeneración completa (sin congelar)")
-    elif limite:
+    if n_bloqueados:
+        print(f"  {n_bloqueados} día(s) con bloqueado=1 (intactos)")
+    if limite:
         print(f"  Congelado hasta {limite.isoformat()} ({n_cong} día(s) conservados del CSV)")
-        if n_cong == 0:
+        if n_cong == 0 and not n_bloqueados:
             print("  ⚠ No se conservó ninguna fila: ¿existía CSV con esas fechas?", file=sys.stderr)
-    elif not args.regenerar_todo:
+    elif not n_bloqueados:
         print("  Sin congelación: se recalculó todo el periodo")
     if n_cong and n_cong != n:
         print(f"  {n - n_cong} día(s) recalculados")

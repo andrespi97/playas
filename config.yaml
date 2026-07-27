@@ -15,7 +15,7 @@ periodo:
 #   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
 #   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
 #   horas_extras — Nombre:horas; Nombre:horas (solo manual; alimenta la pantalla Horas)
-#   bloqueado    — 1 o x: la fila no se toca NUNCA al regenerar (ni con --regenerar-todo)
+#   bloqueado    — 1 o x: la fila no se toca jamás al regenerar
 congelado:
   pasado_automatico: true
   hasta: "2026-07-03"
@@ -30,7 +30,7 @@ rotacion:
 # Grupo 1: Esther (pat) + Fernando + Vacante 1
 # Grupo 2: Adrián (pat) + Claudio + Alex + Vacante 2
 # Grupo 3: Vacante 3 (pat, hueco Pablo) + Robinson + Sergio + Vacante 4
-# Plantilla: 10 socorristas + 5 patrones = 15 entradas (Raúl patrón sustituto laborables)
+# Plantilla: 10 socorristas + 4 patrones = 14 entradas (Raúl fuera de momento)
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
   - { nombre: "Arturo", grupo: 1 }
@@ -46,7 +46,7 @@ socorristas:
 patrones:
   - { nombre: "Esther Román Figueroa", grupo: 1 }
   - { nombre: "Adrián Bouzón Amoedo", grupo: 2 }
-  - { nombre: "Raúl", grupo: 2 }
+  # - { nombre: "Raúl", grupo: 2 }  # fuera de momento
   - { nombre: "Anxo", grupo: 2 }
   - { nombre: "Vacante 3", grupo: 3 }
 
@@ -77,22 +77,22 @@ disponibilidad:
       - "2026-08-27"
   Anxo:
     fines_de_semana: true
-  Raúl:
-    laborables: true
+  # Raúl:
+  #   laborables: true
 
 # Patrón sustituto: cubre cesantes cuando el titular libra (lun–vie; nunca chapela)
-patron_sustituto:
-  Raúl:
-    puesto: patron_cesantes
-    cubre:
-      - "Esther Román Figueroa"
-      - "Adrián Bouzón Amoedo"
+# patron_sustituto:
+#   Raúl:
+#     puesto: patron_cesantes
+#     cubre:
+#       - "Esther Román Figueroa"
+#       - "Adrián Bouzón Amoedo"
 
 # Sustitutos temporales: cada uno cubre una vacante el día que trabaja
 sustitutos:
   - "Arturo"
   - "Anxo"
-  - "Raúl"
+  # - "Raúl"
 
 preferencias:
   # G1 trabaja (4/2): Esther patrón Chapela + Fernando socorrista Chapela.
@@ -149,8 +149,8 @@ preferencias:
     - "Anxo"
 
   # Solo patrón (nunca socorrista)
-  solo_patron:
-    - "Raúl"
+  # solo_patron:
+  #   - "Raúl"
 
   # Prefieren zodiac; pueden abrir puesto solo si no hay otro disponible
   prefieren_zodiac:

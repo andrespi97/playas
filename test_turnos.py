@@ -38,6 +38,7 @@ from turnos_common import (  # noqa: E402
     cargar_config,
     cargar_filas_csv,
     celda_bloqueada,
+    fechas_bloqueadas_csv,
     contar_horas_fila,
     contar_horas_por_mes,
     cubridores_vacantes_fila,
@@ -51,7 +52,6 @@ from turnos_common import (  # noqa: E402
 
 
 def filas_csv() -> list[dict[str, str]]:
-    generar_csv(cargar_config_validada(), congelar=False)
     return cargar_filas_csv()
 
 
@@ -151,6 +151,7 @@ class TestRotacion4x2(unittest.TestCase):
             construir_personas(cfg),
             cfg["rotacion"],
             parse_fecha(cfg["periodo"]["inicio"]),
+            fechas_congeladas=fechas_bloqueadas_csv(),
             refuerzos_disponibilidad=nombres_refuerzo_disponibilidad(cfg),
         )
         self.assertIsNone(err, err)
@@ -213,10 +214,13 @@ class TestRotacion4x2(unittest.TestCase):
             personas,
             rot,
             inicio,
+            fechas_congeladas=fechas_bloqueadas_csv(),
             refuerzos_disponibilidad=nombres_refuerzo_disponibilidad(cfg),
         )
         self.assertIsNone(err, err)
         for fila in filas:
+            if celda_bloqueada(fila.get("bloqueado", "")):
+                continue
             dia_idx = (parse_fecha(fila["fecha"]) - inicio).days
             for nombre in ("Esther", "Fernando", "Adrián"):
                 if nombre not in nombres_asignados_fila(fila):
@@ -368,6 +372,7 @@ class TestSustitutos(unittest.TestCase):
         self.assertEqual(libres.count("Anxo"), 1)
 
 
+@unittest.skip("Raúl fuera de momento")
 class TestPatronSustituto(unittest.TestCase):
     def test_raul_cubre_esther_laborable(self) -> None:
         cfg = cargar_config_validada()
@@ -463,8 +468,8 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(fila["cesantes"], "Robinson; Vacante 2; Vacante 4")
         self.assertEqual(fila["horas_extras"], "Fernando:8;Esther:8")
 
-    def test_bloqueado_preserva_regenerar_todo(self) -> None:
-        """--regenerar-todo no toca filas con bloqueado=1."""
+    def test_bloqueado_inalterable_siempre(self) -> None:
+        """Ninguna regeneración toca filas con bloqueado=1."""
         cfg = cargar_config_validada()
         generar_csv(cfg, congelar=False)
         filas = cargar_filas_csv()
@@ -483,12 +488,32 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             writer.writeheader()
             writer.writerows(filas)
 
+        esperada = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-08")
         generar_csv(cfg, congelar=False)
         fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-08")
-        self.assertEqual(fila["socorrista_chapela"], "Fernando")
-        self.assertEqual(fila["patron_chapela"], "Esther")
-        self.assertEqual(fila["llave_cesantes"], "Robinson")
-        self.assertEqual(fila["cesantes"], "Adrián; Vacante 2; Vacante 4")
+        self.assertEqual(fila, esperada)
+
+    def test_bloqueado_no_valida_ni_impide_escritura(self) -> None:
+        """Una fila bloqueada con datos manuales no bloquea el resto del cuadrante."""
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        filas = cargar_filas_csv()
+        for fila in filas:
+            if fila["fecha"] == "2026-07-11":
+                fila["cesantes"] = "Anxo; Claudio; Vacante 1; Vacante 4"
+                fila["bloqueado"] = "1"
+                break
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+            import csv
+
+            writer = csv.DictWriter(f, fieldnames=filas[0].keys())
+            writer.writeheader()
+            writer.writerows(filas)
+
+        esperada = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-11")
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-11")
+        self.assertEqual(fila, esperada)
 
     def test_jul_11_sin_vacaciones_esther(self) -> None:
         cfg = cargar_config_validada()
@@ -538,6 +563,29 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(ambos["Fernando"]["horas_turno"], 0.0)
         self.assertEqual(ambos["Fernando"]["horas_extras"], 8.0)
         self.assertEqual(ambos["Esther"]["horas_extras"], 8.0)
+
+    def test_contar_horas_anxo_siempre_extras(self) -> None:
+        # Asignado sin horas_extras → 8 h extra, no turno
+        asignado = contar_horas_fila(
+            {
+                "abrir_torre": "Anxo",
+                "cesantes": "Vacante 1",
+                "horas_extras": "",
+            }
+        )
+        self.assertEqual(asignado["Anxo"]["horas_turno"], 0.0)
+        self.assertEqual(asignado["Anxo"]["horas_extras"], 8.0)
+        self.assertEqual(asignado["Anxo"]["dias_extra"], 1)
+
+        # Horas explícitas en CSV (p. ej. 4 h en vez de 8)
+        parcial = contar_horas_fila(
+            {
+                "socorrista_chapela": "Fernando",
+                "horas_extras": "Anxo:4",
+            }
+        )
+        self.assertEqual(parcial["Anxo"]["horas_extras"], 4.0)
+        self.assertEqual(parcial["Anxo"]["horas_turno"], 0.0)
 
     def test_contar_horas_por_mes_agrega(self) -> None:
         filas = [
@@ -749,8 +797,8 @@ class TestConfig(unittest.TestCase):
         soc = [p for p in personas if p.rol == "socorrista"]
         pat = [p for p in personas if p.rol == "patron"]
         self.assertEqual(len(soc), 10)
-        self.assertEqual(len(pat), 5)
-        self.assertEqual(len(personas), 15)
+        self.assertEqual(len(pat), 4)
+        self.assertEqual(len(personas), 14)
         vacantes = [p.nombre for p in personas if p.nombre.startswith("Vacante")]
         self.assertEqual(sorted(vacantes), ["Vacante 1", "Vacante 2", "Vacante 3", "Vacante 4"])
 

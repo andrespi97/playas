@@ -23,6 +23,10 @@ PAGES_NOJEKYLL_PATH = PAGES_DIR / ".nojekyll"
 # Jornada ordinaria de un día asignado sin marca de horas_extras
 HORAS_JORNADA = 8.0
 
+# Socorristas cuyas horas siempre van a extras (nunca turno ordinario).
+# Si están asignados sin horas_extras explícitas, cuentan 8 h como extra.
+HORAS_SOLO_EXTRAS = frozenset({"Anxo"})
+
 # Puestos que cuentan como asignación (llave_chapela es metadato)
 PUESTOS_ASIGNACION = (
     "socorrista_chapela",
@@ -47,7 +51,7 @@ COLUMNAS_CSV = (
 
 # Solo edición manual en el CSV. El generador nunca las rellena (salvo copiar bloqueado).
 # vacaciones / horas_extras: se copian al regenerar días no bloqueados.
-# bloqueado: si está marcado, la fila no se toca al regenerar (1, x, sí…), nunca.
+# bloqueado: si está marcado, la fila no se toca al regenerar (1, x, sí…), jamás.
 COLUMNAS_ADMIN = (
     "vacaciones",
     "horas_extras",
@@ -90,6 +94,30 @@ def cargar_filas_csv(path: Path | None = None) -> list[dict[str, str]]:
 
 def filas_csv_por_fecha(path: Path | None = None) -> dict[str, dict[str, str]]:
     return {f["fecha"]: dict(f) for f in cargar_filas_csv(path)}
+
+
+def filas_bloqueadas_por_fecha(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """Copia literal de filas con bloqueado activo; el generador no las toca."""
+    return {
+        fecha: dict(fila)
+        for fecha, fila in filas_csv_por_fecha(path).items()
+        if celda_bloqueada(fila.get("bloqueado", ""))
+    }
+
+
+def fechas_bloqueadas_csv(path: Path | None = None) -> set[str]:
+    return set(filas_bloqueadas_por_fecha(path))
+
+
+def cargar_existentes_csv(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """Carga el CSV; las filas bloqueadas se conservan sin normalizar."""
+    existentes: dict[str, dict[str, str]] = {}
+    for fecha, fila in filas_csv_por_fecha(path).items():
+        if celda_bloqueada(fila.get("bloqueado", "")):
+            existentes[fecha] = dict(fila)
+        else:
+            existentes[fecha] = normalizar_fila_csv(fila)
+    return existentes
 
 
 def fecha_congelacion_limite(cfg: dict, hoy: date | None = None) -> date | None:
@@ -212,6 +240,7 @@ def contar_horas_fila(
 
     - Si figura en horas_extras: cuenta esas horas como extras (no se suma jornada).
     - Si está asignado y no tiene extras ese día: suma horas_jornada como turno.
+    - HORAS_SOLO_EXTRAS: asignado sin entrada explícita → horas_jornada como extra.
     - Las vacantes no cuentan.
     """
     try:
@@ -244,6 +273,10 @@ def contar_horas_fila(
         if nombre in extras:
             continue
         p = fila_persona(nombre)
+        if nombre in HORAS_SOLO_EXTRAS:
+            p["dias_extra"] = int(p["dias_extra"]) + 1
+            p["horas_extras"] = float(p["horas_extras"]) + float(horas_jornada)
+            continue
         p["dias_turno"] = int(p["dias_turno"]) + 1
         p["horas_turno"] = float(p["horas_turno"]) + float(horas_jornada)
 
