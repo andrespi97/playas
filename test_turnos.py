@@ -587,6 +587,27 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(parcial["Anxo"]["horas_extras"], 4.0)
         self.assertEqual(parcial["Anxo"]["horas_turno"], 0.0)
 
+    def test_contar_horas_arturo_siempre_extras(self) -> None:
+        asignado = contar_horas_fila(
+            {
+                "abrir_torre": "Arturo",
+                "cesantes": "Vacante 2",
+                "horas_extras": "",
+            }
+        )
+        self.assertEqual(asignado["Arturo"]["horas_turno"], 0.0)
+        self.assertEqual(asignado["Arturo"]["horas_extras"], 8.0)
+
+        en_cesantes = contar_horas_fila(
+            {
+                "socorrista_chapela": "Fernando",
+                "cesantes": "Arturo; Vacante 2",
+                "horas_extras": "",
+            }
+        )
+        self.assertEqual(en_cesantes["Arturo"]["horas_turno"], 0.0)
+        self.assertEqual(en_cesantes["Arturo"]["horas_extras"], 8.0)
+
     def test_contar_horas_por_mes_agrega(self) -> None:
         filas = [
             {
