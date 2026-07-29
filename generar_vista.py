@@ -24,10 +24,14 @@ from turnos_common import (
     cargar_config,
     cargar_filas_csv,
     contar_horas_por_mes,
+    etiqueta_importe,
     etiqueta_periodo,
+    etiqueta_precio_dia,
+    importe_extras,
     parse_fecha,
     parse_horas_extras,
     parse_lista_nombres,
+    precios_extras_dia,
     publicar_html_github_pages,
     marcar_vacantes_cubiertas,
     cubridores_vacantes_fila,
@@ -1002,6 +1006,7 @@ def generar_html_horas(
     plantilla = nombres_plantilla(cfg) if cfg else [
         n for n in nombres_unicos(filas) if not n.startswith("Vacante")
     ]
+    precios = precios_extras_dia(cfg)
     por_mes = contar_horas_por_mes(filas, horas_jornada=HORAS_JORNADA, plantilla=plantilla)
     meses_nav = [
         {"y": y, "m": m, "label": f"{MESES[m]} {y}"}
@@ -1023,8 +1028,20 @@ def generar_html_horas(
         total_turno = sum(float(p["horas_turno"]) for _, p in filas_tabla)
         total_extras = sum(float(p["horas_extras"]) for _, p in filas_tabla)
         total_todo = total_turno + total_extras
+        total_pagar = 0.0
+        hay_convenio = False
         filas_html = []
         for nombre, datos in filas_tabla:
+            precio = precios.get(nombre)
+            importe = importe_extras(
+                float(datos["horas_extras"]),
+                precio,
+                horas_jornada=HORAS_JORNADA,
+            )
+            if isinstance(importe, float):
+                total_pagar += importe
+            elif importe == "convenio":
+                hay_convenio = True
             clase = " class=\"sin-horas\"" if float(datos["total"]) == 0 else ""
             filas_html.append(
                 f"<tr{clase}>"
@@ -1034,8 +1051,13 @@ def generar_html_horas(
                 f'<td class="num">{int(datos["dias_extra"])}</td>'
                 f'<td class="num extras">{html.escape(formatear_horas(datos["horas_extras"]))} h</td>'
                 f'<td class="num total">{html.escape(formatear_horas(datos["total"]))} h</td>'
+                f'<td class="num precio">{html.escape(etiqueta_precio_dia(precio))}</td>'
+                f'<td class="num pagar">{html.escape(etiqueta_importe(importe))}</td>'
                 f"</tr>"
             )
+        pie_pagar = etiqueta_importe(total_pagar)
+        if hay_convenio:
+            pie_pagar = f"{pie_pagar} + convenio" if total_pagar else "Convenio"
         bloques.append(
             f'<section class="mes" id="horas-{y}-{m:02d}">'
             f"<h2>{MESES[m]} {y}</h2>"
@@ -1047,6 +1069,8 @@ def generar_html_horas(
             f'<th title="Días con horas_extras">Días extra</th>'
             f"<th>Horas extras</th>"
             f"<th>Total</th>"
+            f'<th title="Tarifa por jornada de {formatear_horas(HORAS_JORNADA)} h de extras">Precio/día</th>'
+            f'<th title="(Horas extras ÷ {formatear_horas(HORAS_JORNADA)}) × precio/día">A pagar</th>'
             f"</tr></thead>"
             f'<tbody>{"".join(filas_html)}</tbody>'
             f"<tfoot><tr>"
@@ -1056,6 +1080,8 @@ def generar_html_horas(
             f"<td></td>"
             f'<td class="num extras">{html.escape(formatear_horas(total_extras))} h</td>'
             f'<td class="num total">{html.escape(formatear_horas(total_todo))} h</td>'
+            f"<td></td>"
+            f'<td class="num pagar">{html.escape(pie_pagar)}</td>'
             f"</tr></tfoot>"
             f"</table></div></section>"
         )
@@ -1116,6 +1142,7 @@ def generar_html_horas(
     .tabla-horas td.nombre {{ font-weight: 600; }}
     .tabla-horas td.extras {{ color: #6d28d9; font-weight: 600; }}
     .tabla-horas td.total {{ font-weight: 700; color: var(--mar); }}
+    .tabla-horas td.pagar {{ font-weight: 700; color: #0f766e; }}
     .tabla-horas tbody tr:hover {{ background: #fffbeb; }}
     .tabla-horas tr.sin-horas {{ opacity: 0.45; }}
     .tabla-horas tfoot td {{
@@ -1124,6 +1151,7 @@ def generar_html_horas(
       border-bottom: none;
       color: var(--mar);
     }}
+    .tabla-horas tfoot td.pagar {{ color: #0f766e; }}
     @media (max-width: 640px) {{
       .tabla-horas {{ font-size: 0.85rem; }}
       .tabla-horas th, .tabla-horas td {{ padding: 0.55rem 0.6rem; }}
@@ -1141,6 +1169,8 @@ def generar_html_horas(
       <strong>Horas turno:</strong> {jornada_txt} h por cada día asignado sin marca de extras.
       <strong>Horas extras:</strong> suma de la columna <code>horas_extras</code> del CSV
       (si un día tiene extras, ese día cuenta solo como extra, no se duplica la jornada).
+      <strong>A pagar:</strong> (horas extras ÷ {jornada_txt}) × precio/día;
+      «Convenio» = según convenio colectivo (sin importe fijo en config).
     </p>
     <nav class="tabs-mes">{mes_btns}</nav>
     {"".join(bloques)}

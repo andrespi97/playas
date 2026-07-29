@@ -227,6 +227,69 @@ def format_horas_extras(extras: dict[str, float]) -> str:
     )
 
 
+def precios_extras_dia(cfg: dict | None) -> dict[str, float | str]:
+    """Mapa nombre → €/día (float) o «convenio» desde config.precio_extras_dia."""
+    if not cfg:
+        return {}
+    bruto = cfg.get("precio_extras_dia") or {}
+    resultado: dict[str, float | str] = {}
+    for clave, valor in bruto.items():
+        nombre = solo_nombre(str(clave).strip())
+        if not nombre:
+            continue
+        if isinstance(valor, str) and valor.strip().casefold() == "convenio":
+            resultado[nombre] = "convenio"
+            continue
+        try:
+            resultado[nombre] = float(valor)
+        except (TypeError, ValueError):
+            continue
+    return resultado
+
+
+def formatear_euros(valor: float) -> str:
+    """Formato español: 1.196,25 € (sin decimales si es entero)."""
+    n = float(valor)
+    if abs(n - round(n)) < 1e-9:
+        entero = f"{int(round(n)):,}".replace(",", ".")
+        return f"{entero} €"
+    txt = f"{n:,.2f}"
+    return txt.replace(",", "X").replace(".", ",").replace("X", ".") + " €"
+
+
+def etiqueta_precio_dia(precio: float | str | None) -> str:
+    if precio is None:
+        return "—"
+    if precio == "convenio":
+        return "Convenio"
+    return formatear_euros(float(precio))
+
+
+def importe_extras(
+    horas_extras: float,
+    precio: float | str | None,
+    *,
+    horas_jornada: float = HORAS_JORNADA,
+) -> float | str | None:
+    """Importe a pagar por extras: (horas/jornada)×precio; convenio o None si no aplica."""
+    horas = float(horas_extras)
+    if horas <= 0:
+        return 0.0
+    if precio is None:
+        return None
+    if precio == "convenio":
+        return "convenio"
+    return horas / float(horas_jornada) * float(precio)
+
+
+def etiqueta_importe(importe: float | str | None) -> str:
+    if importe is None:
+        return "—"
+    if importe == "convenio":
+        return "Convenio"
+    return formatear_euros(float(importe))
+
+
 def es_nombre_vacante(nombre: str) -> bool:
     return bool(nombre) and nombre.startswith("Vacante")
 
