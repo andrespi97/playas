@@ -13,11 +13,9 @@ ROOT = Path(__file__).parent
 CONFIG_PATH = ROOT / "config.yaml"
 CSV_PATH = ROOT / "turnos_jul_sep_2026.csv"
 HTML_PATH = ROOT / "turnos.html"
-HORAS_HTML_PATH = ROOT / "horas.html"
 VENDOR_DIR = ROOT / "vendor"
 PAGES_DIR = ROOT / "docs"
 PAGES_INDEX_PATH = PAGES_DIR / "index.html"
-PAGES_HORAS_PATH = PAGES_DIR / "horas.html"
 PAGES_AGOSTO_PATH = PAGES_DIR / "agosto.html"
 PAGES_NOJEKYLL_PATH = PAGES_DIR / ".nojekyll"
 
@@ -228,69 +226,6 @@ def format_horas_extras(extras: dict[str, float]) -> str:
     )
 
 
-def precios_extras_dia(cfg: dict | None) -> dict[str, float | str]:
-    """Mapa nombre → €/día (float) o «convenio» desde config.precio_extras_dia."""
-    if not cfg:
-        return {}
-    bruto = cfg.get("precio_extras_dia") or {}
-    resultado: dict[str, float | str] = {}
-    for clave, valor in bruto.items():
-        nombre = solo_nombre(str(clave).strip())
-        if not nombre:
-            continue
-        if isinstance(valor, str) and valor.strip().casefold() == "convenio":
-            resultado[nombre] = "convenio"
-            continue
-        try:
-            resultado[nombre] = float(valor)
-        except (TypeError, ValueError):
-            continue
-    return resultado
-
-
-def formatear_euros(valor: float) -> str:
-    """Formato español: 1.196,25 € (sin decimales si es entero)."""
-    n = float(valor)
-    if abs(n - round(n)) < 1e-9:
-        entero = f"{int(round(n)):,}".replace(",", ".")
-        return f"{entero} €"
-    txt = f"{n:,.2f}"
-    return txt.replace(",", "X").replace(".", ",").replace("X", ".") + " €"
-
-
-def etiqueta_precio_dia(precio: float | str | None) -> str:
-    if precio is None:
-        return "—"
-    if precio == "convenio":
-        return "Convenio"
-    return formatear_euros(float(precio))
-
-
-def importe_extras(
-    horas_extras: float,
-    precio: float | str | None,
-    *,
-    horas_jornada: float = HORAS_JORNADA,
-) -> float | str | None:
-    """Importe a pagar por extras: (horas/jornada)×precio; convenio o None si no aplica."""
-    horas = float(horas_extras)
-    if horas <= 0:
-        return 0.0
-    if precio is None:
-        return None
-    if precio == "convenio":
-        return "convenio"
-    return horas / float(horas_jornada) * float(precio)
-
-
-def etiqueta_importe(importe: float | str | None) -> str:
-    if importe is None:
-        return "—"
-    if importe == "convenio":
-        return "Convenio"
-    return formatear_euros(float(importe))
-
-
 def es_nombre_vacante(nombre: str) -> bool:
     return bool(nombre) and nombre.startswith("Vacante")
 
@@ -466,20 +401,11 @@ def fila_vacia_admin() -> dict[str, str]:
     return {col: "" for col in COLUMNAS_ADMIN}
 
 
-def publicar_html_github_pages(
-    origen: Path | None = None,
-    *,
-    horas: Path | None = None,
-) -> Path:
+def publicar_html_github_pages(origen: Path | None = None) -> Path:
     """Copia el HTML generado a docs/ (GitHub Pages)."""
     origen = origen or HTML_PATH
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     PAGES_INDEX_PATH.write_text(origen.read_text(encoding="utf-8"), encoding="utf-8")
-    horas_origen = horas if horas is not None else (
-        HORAS_HTML_PATH if HORAS_HTML_PATH.exists() else None
-    )
-    if horas_origen is not None and horas_origen.exists():
-        PAGES_HORAS_PATH.write_text(horas_origen.read_text(encoding="utf-8"), encoding="utf-8")
     if VENDOR_DIR.is_dir():
         shutil.copytree(VENDOR_DIR, PAGES_DIR / "vendor", dirs_exist_ok=True)
     # Evita que GitHub Pages ejecute Jekyll (sitio estático).

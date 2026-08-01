@@ -9,26 +9,13 @@ periodo:
 # - pasado_automatico: conserva hoy y días anteriores (por defecto true)
 # - hasta: fija manualmente hasta qué fecha incluir (útil tras editar el CSV)
 # Edición manual: cambia turnos_jul_sep_2026.csv; marca bloqueado=1 en días que no quieras recalcular
-# Publicar web: python3 generar_vista.py genera turnos.html + horas.html → docs/; luego git push
-# Pantallas: Cuadrante (calendario) y Horas (totales mensuales turno + extras)
+# Publicar web: python3 generar_vista.py genera turnos.html + docs/ (Pages); luego git push
+# Pantallas: Cuadrante (calendario con checkbox de extras) y docs/agosto.html (público sin extras)
 # Columnas admin (mismo CSV):
 #   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
 #   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
-#   horas_extras — Nombre:horas; Nombre:horas (solo manual; alimenta la pantalla Horas)
+#   horas_extras — Nombre:horas; Nombre:horas (solo manual; checkbox «Mostrar horas extra»)
 #   bloqueado    — 1 o x: la fila no se toca jamás al regenerar
-#
-# Precio por día de horas extras (€). Claves = nombre de pila (como en el CSV).
-# Número fijo o "convenio" (se muestra sin calcular importe).
-# A pagar = (horas_extras / 8) × precio_día.
-precio_extras_dia:
-  Anxo: 110
-  Arturo: 110
-  Fernando: 115
-  Esther: 115
-  Sergio: convenio
-  Adrián: convenio
-  Robinson: convenio
-
 congelado:
   pasado_automatico: true
   hasta: "2026-07-03"
