@@ -42,11 +42,16 @@ from turnos_common import (  # noqa: E402
     contar_horas_fila,
     contar_horas_por_mes,
     cubridores_vacantes_fila,
+    etiqueta_importe,
+    etiqueta_precio_dia,
     fecha_congelacion_limite,
+    formatear_euros,
+    importe_extras,
     nombres_asignados_dia,
     parse_fecha,
     parse_horas_extras,
     parse_lista_nombres,
+    precios_extras_dia,
     sustitutos_presentes_fila,
 )
 
@@ -635,6 +640,83 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(jul["total"], 12.0)
         self.assertEqual(por_mes[(2026, 7)]["Esther"]["total"], 0.0)
         self.assertEqual(por_mes[(2026, 8)]["Fernando"]["horas_turno"], 8.0)
+
+    def test_precios_extras_y_importe(self) -> None:
+        precios = precios_extras_dia(
+            {
+                "precio_extras_dia": {
+                    "Anxo": 110,
+                    "Fernando Franco": 115,
+                    "Sergio": "convenio",
+                    "Ignorado": "malo",
+                }
+            }
+        )
+        self.assertEqual(precios["Anxo"], 110.0)
+        self.assertEqual(precios["Fernando"], 115.0)
+        self.assertEqual(precios["Sergio"], "convenio")
+        self.assertNotIn("Ignorado", precios)
+
+        self.assertEqual(importe_extras(0, 110), 0.0)
+        self.assertEqual(importe_extras(8, 110), 110.0)
+        self.assertEqual(importe_extras(4, 110), 55.0)
+        self.assertEqual(importe_extras(87, 110), 87 / 8 * 110)
+        self.assertEqual(importe_extras(8, "convenio"), "convenio")
+        self.assertIsNone(importe_extras(8, None))
+
+        self.assertEqual(etiqueta_precio_dia(110), "110 €")
+        self.assertEqual(etiqueta_precio_dia("convenio"), "Convenio")
+        self.assertEqual(etiqueta_precio_dia(None), "—")
+        self.assertEqual(etiqueta_importe(1196.25), "1.196,25 €")
+        self.assertEqual(formatear_euros(770), "770 €")
+        self.assertEqual(etiqueta_importe("convenio"), "Convenio")
+
+    def test_html_horas_incluye_precio_y_pagar(self) -> None:
+        from generar_vista import generar_html_horas
+
+        cfg = cargar_config()
+        html = generar_html_horas(
+            cargar_filas_csv(),
+            "Turnos playas 2026",
+            "Julio – Septiembre 2026",
+            cfg,
+        )
+        self.assertIn("Precio/día", html)
+        self.assertIn("A pagar", html)
+        self.assertIn("110 €", html)
+        self.assertIn("115 €", html)
+        self.assertIn("Convenio", html)
+        # Anxo julio: 87 h × 110 / 8 = 1.196,25 €
+        self.assertIn("1.196,25 €", html)
+
+    def test_html_agosto_publico_sin_extras(self) -> None:
+        from generar_vista import generar_html
+
+        cfg = cargar_config()
+        html = generar_html(
+            cargar_filas_csv(),
+            "Turnos playas 2026",
+            "Agosto 2026 · cuadrante",
+            cfg,
+            pages=True,
+            solo_mes=(2026, 8),
+            ocultar_extras=True,
+            con_horas=False,
+        )
+        self.assertIn("mes-2026-08", html)
+        self.assertIn("Agosto 2026", html)
+        self.assertNotIn("mes-2026-07", html)
+        self.assertNotIn("mes-2026-09", html)
+        self.assertNotIn('id="mostrar-extras"', html)
+        self.assertNotIn("Mostrar horas extra", html)
+        self.assertNotIn("horas.html", html)
+        self.assertIn("const EXTRAS = {}", html)
+        # Sin horas de extras en el DOM (bloques vacíos / JSON vacío)
+        self.assertNotIn('class="extra"', html)
+        self.assertNotIn("data-horas=", html)
+        # El cuadrante de puestos sí está
+        self.assertIn("Soc. Chapela", html)
+        self.assertIn("Robinson", html)
 
     def test_vacaciones_solo_manuales(self) -> None:
         cfg = cargar_config_validada()

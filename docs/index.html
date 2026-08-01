@@ -330,6 +330,7 @@
         <input type="checkbox" id="mostrar-libres">
         Mostrar quienes libran
       </label>
+      
       <label class="check-libres">
         <input type="checkbox" id="mostrar-extras">
         Mostrar horas extra
@@ -636,10 +637,12 @@
       aplicarFiltro(filtro.value);
     });
 
-    checkExtras.addEventListener("change", () => {
-      document.body.classList.toggle("mostrar-extras", checkExtras.checked);
-      aplicarFiltro(filtro.value);
-    });
+    if (checkExtras) {
+      checkExtras.addEventListener("change", () => {
+        document.body.classList.toggle("mostrar-extras", checkExtras.checked);
+        aplicarFiltro(filtro.value);
+      });
+    }
 
     function activarMes(id) {
       meses.forEach(m => m.classList.toggle("visible", m.id === id));
