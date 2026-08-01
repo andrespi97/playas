@@ -1,0 +1,4 @@
+# Entorno de desarrollo
+.venv/
+__pycache__/
+*.pyc
