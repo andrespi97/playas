@@ -18,6 +18,7 @@ VENDOR_DIR = ROOT / "vendor"
 PAGES_DIR = ROOT / "docs"
 PAGES_INDEX_PATH = PAGES_DIR / "index.html"
 PAGES_HORAS_PATH = PAGES_DIR / "horas.html"
+PAGES_AGOSTO_PATH = PAGES_DIR / "agosto.html"
 PAGES_NOJEKYLL_PATH = PAGES_DIR / ".nojekyll"
 
 # Jornada ordinaria de un día asignado sin marca de horas_extras

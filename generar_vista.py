@@ -18,6 +18,7 @@ from turnos_common import (
     HORAS_HTML_PATH,
     HORAS_JORNADA,
     HTML_PATH,
+    PAGES_AGOSTO_PATH,
     PAGES_HORAS_PATH,
     PAGES_INDEX_PATH,
     PUESTOS_ASIGNACION,
@@ -65,8 +66,10 @@ def formatear_horas(valor: float | int) -> str:
     return f"{n:g}"
 
 
-def nav_pantallas(activa: str, *, pages: bool = False) -> str:
+def nav_pantallas(activa: str, *, pages: bool = False, con_horas: bool = True) -> str:
     """Enlaces entre cuadrante y resumen de horas."""
+    if not con_horas:
+        return ""
     cuadrante = "index.html" if pages else "turnos.html"
     horas = "horas.html"
     items = [
@@ -274,7 +277,22 @@ def generar_html(
     cfg: dict,
     *,
     pages: bool = False,
+    solo_mes: tuple[int, int] | None = None,
+    ocultar_extras: bool = False,
+    con_horas: bool = True,
 ) -> str:
+    """Genera el cuadrante HTML.
+
+    - solo_mes: si se indica (año, mes), solo ese mes.
+    - ocultar_extras: no incluye datos ni controles de horas extras (vista pública).
+    - con_horas: muestra el enlace a la pantalla Horas.
+    """
+    if solo_mes is not None:
+        anio_filtro, mes_filtro = solo_mes
+        filas = [
+            f for f in filas
+            if (d := parse_fecha(f["fecha"])).year == anio_filtro and d.month == mes_filtro
+        ]
     por_mes = filas_por_mes(filas)
     trabajadores = nombres_plantilla(cfg) if cfg else nombres_unicos(filas)
     sustitutos = sin_vacantes_roster(cfg.get("sustitutos", [])) if cfg else []
@@ -285,11 +303,12 @@ def generar_html(
         fila["fecha"]: parse_lista_nombres(fila.get("vacaciones", "")) for fila in filas
     }
     extras_por_fecha: dict[str, dict[str, float]] = {}
-    for fila in filas:
-        try:
-            extras_por_fecha[fila["fecha"]] = parse_horas_extras(fila.get("horas_extras", ""))
-        except ValueError:
-            extras_por_fecha[fila["fecha"]] = {}
+    if not ocultar_extras:
+        for fila in filas:
+            try:
+                extras_por_fecha[fila["fecha"]] = parse_horas_extras(fila.get("horas_extras", ""))
+            except ValueError:
+                extras_por_fecha[fila["fecha"]] = {}
     datos = {
         fecha: [
             {
@@ -334,7 +353,10 @@ def generar_html(
             lineas = "".join(render_puesto(p) for p in puestos)
             lineas_libres = "".join(render_libre(n) for n in libres)
             lineas_vac = "".join(render_vacaciones(n) for n in vacaciones)
-            lineas_extra = "".join(render_extra(n, h) for n, h in sorted(extras.items(), key=lambda p: p[0].casefold()))
+            lineas_extra = "".join(
+                render_extra(n, h)
+                for n, h in sorted(extras.items(), key=lambda p: p[0].casefold())
+            )
             celdas.append(
                 f'<article class="dia" data-fecha="{fila["fecha"]}" '
                 f"data-personas='{data_personas}' data-libres='{data_libres}' "
@@ -364,6 +386,19 @@ def generar_html(
         f'{html.escape(m["label"])}</button>'
         for m in meses_nav
     )
+    check_extras_html = ""
+    if not ocultar_extras:
+        check_extras_html = """
+      <label class="check-libres">
+        <input type="checkbox" id="mostrar-extras">
+        Mostrar horas extra
+      </label>"""
+    leyenda_extra = ""
+    if not ocultar_extras:
+        leyenda_extra = (
+            '<span><strong>Extra</strong> · horas extras (morado)</span>\n      '
+        )
+    nav_html = nav_pantallas("cuadrante", pages=pages, con_horas=con_horas)
 
     return f"""<!DOCTYPE html>
 <html lang="es">
@@ -685,7 +720,7 @@ def generar_html(
     <header class="page">
       <h1>{html.escape(titulo)}</h1>
       <p>{html.escape(subtitulo)} · 4 días trabajo / 2 libres</p>
-      {nav_pantallas("cuadrante", pages=pages)}
+      {nav_html}
     </header>
     <div class="controles">
       <label for="filtro">Ver turnos de:</label>
@@ -697,10 +732,7 @@ def generar_html(
         <input type="checkbox" id="mostrar-libres">
         Mostrar quienes libran
       </label>
-      <label class="check-libres">
-        <input type="checkbox" id="mostrar-extras">
-        Mostrar horas extra
-      </label>
+      {check_extras_html}
     </div>
     <nav class="tabs-mes">
       {mes_btns}
@@ -720,8 +752,7 @@ def generar_html(
       <span><strong>Vacante</strong> · hueco sin cubrir (rosa)</span>
       <span><strong>Cubierta</strong> · sustituto o extra (verde)</span>
       <span><strong>Vacaciones</strong> · no disponible (naranja)</span>
-      <span><strong>Extra</strong> · horas extras (morado)</span>
-      <span><strong>Libre</strong> · descanso (rotación 4/2)</span>
+      {leyenda_extra}<span><strong>Libre</strong> · descanso (rotación 4/2)</span>
     </div>
   </div>
   <script src="vendor/html2canvas.min.js"></script>
@@ -906,10 +937,12 @@ def generar_html(
       aplicarFiltro(filtro.value);
     }});
 
-    checkExtras.addEventListener("change", () => {{
-      document.body.classList.toggle("mostrar-extras", checkExtras.checked);
-      aplicarFiltro(filtro.value);
-    }});
+    if (checkExtras) {{
+      checkExtras.addEventListener("change", () => {{
+        document.body.classList.toggle("mostrar-extras", checkExtras.checked);
+        aplicarFiltro(filtro.value);
+      }});
+    }}
 
     function activarMes(id) {{
       meses.forEach(m => m.classList.toggle("visible", m.id === id));
@@ -1218,9 +1251,24 @@ def main() -> int:
         generar_html_horas(filas, titulo, subtitulo, cfg, pages=True),
         encoding="utf-8",
     )
+    # Vista pública: solo agosto, sin horas extras ni enlace a Horas
+    PAGES_AGOSTO_PATH.write_text(
+        generar_html(
+            filas,
+            titulo,
+            "Agosto 2026 · cuadrante",
+            cfg,
+            pages=True,
+            solo_mes=(2026, 8),
+            ocultar_extras=True,
+            con_horas=False,
+        ),
+        encoding="utf-8",
+    )
     print(f"HTML generado: {HTML_PATH}")
     print(f"Horas: {HORAS_HTML_PATH}")
     print(f"GitHub Pages: {pages}")
+    print(f"Público agosto: {PAGES_AGOSTO_PATH}")
     return 0
 
 

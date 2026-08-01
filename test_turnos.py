@@ -689,6 +689,35 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         # Anxo julio: 87 h × 110 / 8 = 1.196,25 €
         self.assertIn("1.196,25 €", html)
 
+    def test_html_agosto_publico_sin_extras(self) -> None:
+        from generar_vista import generar_html
+
+        cfg = cargar_config()
+        html = generar_html(
+            cargar_filas_csv(),
+            "Turnos playas 2026",
+            "Agosto 2026 · cuadrante",
+            cfg,
+            pages=True,
+            solo_mes=(2026, 8),
+            ocultar_extras=True,
+            con_horas=False,
+        )
+        self.assertIn("mes-2026-08", html)
+        self.assertIn("Agosto 2026", html)
+        self.assertNotIn("mes-2026-07", html)
+        self.assertNotIn("mes-2026-09", html)
+        self.assertNotIn('id="mostrar-extras"', html)
+        self.assertNotIn("Mostrar horas extra", html)
+        self.assertNotIn("horas.html", html)
+        self.assertIn("const EXTRAS = {}", html)
+        # Sin horas de extras en el DOM (bloques vacíos / JSON vacío)
+        self.assertNotIn('class="extra"', html)
+        self.assertNotIn("data-horas=", html)
+        # El cuadrante de puestos sí está
+        self.assertIn("Soc. Chapela", html)
+        self.assertIn("Robinson", html)
+
     def test_vacaciones_solo_manuales(self) -> None:
         cfg = cargar_config_validada()
         filas = cargar_filas_csv()
