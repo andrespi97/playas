@@ -6,8 +6,9 @@ Generador de cuadrantes de turnos de socorristas (Python, sin framework web). Sc
 
 ### Servicios / componentes
 - `generar_turnos.py`: valida `config.yaml`, calcula la rotación y escribe `turnos_jul_sep_2026.csv`; al terminar llama a `generar_vista.py`.
-- `generar_vista.py`: genera `turnos.html`, `horas.html` y `docs/index.html` (GitHub Pages) a partir del CSV.
-- `turnos.html` / `docs/index.html`: SPA estática (calendario + botón "Descargar PDF del mes"). Usa `vendor/jspdf.umd.min.js` y `vendor/html2canvas.min.js`.
+- `generar_vista.py`: genera `turnos.html`, `docs/index.html` y `docs/agosto.html` (GitHub Pages, agosto sin extras) a partir del CSV.
+- `turnos.html` / `docs/index.html`: SPA estática (calendario + checkbox de extras + PDF). Usa `vendor/jspdf.umd.min.js` y `vendor/html2canvas.min.js`.
+- `docs/agosto.html`: cuadrante público solo de agosto, sin horas extras.
 
 ### Entorno
 - Las dependencias se instalan en un virtualenv en `.venv/` (ver update script). Usa `.venv/bin/python` para todo.
