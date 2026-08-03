@@ -29,7 +29,7 @@ rotacion:
 
 # Grupo 1: Esther (pat) + Fernando + Vacante 1
 # Grupo 2: Adrián (pat) + Claudio + Alex + Vacante 2
-# Grupo 3: Vacante 3 (pat, hueco Pablo) + Robinson + Sergio + Vacante 4
+# Grupo 3: Vacante 3 (pat, hueco Pablo) + Robinson + Sergio + Rodrigo
 # Plantilla: 10 socorristas + 4 patrones = 14 entradas (Raúl fuera de momento)
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
@@ -41,7 +41,7 @@ socorristas:
   - { nombre: "Anxo", grupo: 2 }
   - { nombre: "Robinson Ubaldo Rodríguez De Jesús", grupo: 3 }
   - { nombre: "Sergio Amoedo Domínguez", grupo: 3 }
-  - { nombre: "Vacante 4", grupo: 3 }
+  - { nombre: "Rodrigo", grupo: 3 }
 
 patrones:
   - { nombre: "Esther Román Figueroa", grupo: 1 }
