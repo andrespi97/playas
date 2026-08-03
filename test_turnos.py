@@ -851,7 +851,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(len(pat), 4)
         self.assertEqual(len(personas), 14)
         vacantes = [p.nombre for p in personas if p.nombre.startswith("Vacante")]
-        self.assertEqual(sorted(vacantes), ["Vacante 1", "Vacante 2", "Vacante 3", "Vacante 4"])
+        self.assertEqual(sorted(vacantes), ["Vacante 1", "Vacante 2", "Vacante 3"])
 
     def test_config_actual_es_valida(self) -> None:
         self.assertEqual(validar_config(cargar_config_validada()), [])
