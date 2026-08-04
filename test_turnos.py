@@ -646,23 +646,97 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             "horas_extras": "",
         }
         self.assertEqual(nombres_en_cesantes(fila), ["Adrián", "Claudio", "Vacante 1", "Vacante 2"])
-        # Incluye vacantes (= filas visibles en la card)
-        self.assertEqual(contar_socorristas_cesantes(fila), 4)
-        # 11 ago típico: Vacante 3 + Sergio + Vacante 1
+        # Solo personas reales (vacantes no cuentan)
+        self.assertEqual(contar_socorristas_cesantes(fila), 2)
+        # Torre y Zodiac suman; Adrián (patron_solo_zodiac) nunca
+        ago4 = {
+            "patron_cesantes": "Vacante 3",
+            "llave_cesantes": "Robinson",
+            "cesantes": "Vacante 1",
+            "socorrista_zodiac": "Sergio",
+            "abrir_torre": "Rodrigo",
+        }
+        self.assertEqual(
+            contar_socorristas_cesantes(ago4, patron_solo_zodiac=["Adrián"]),
+            3,
+        )
+        ago8 = {
+            "patron_cesantes": "",
+            "llave_cesantes": "Anxo",
+            "cesantes": "Alejandro; Vacante 1; Vacante 2",
+            "socorrista_zodiac": "Adrián",
+            "abrir_torre": "Claudio",
+            "horas_extras": "",
+        }
+        self.assertEqual(
+            contar_socorristas_cesantes(
+                ago8, sustitutos=["Arturo", "Anxo"], patron_solo_zodiac=["Adrián"]
+            ),
+            3,
+        )
+        # 11 ago: Sergio + Rodrigo + Robinson (zodiac); vacantes no cuentan
         ago11 = {
             "patron_cesantes": "Vacante 3",
             "llave_cesantes": "Sergio",
             "cesantes": "Vacante 1",
+            "socorrista_zodiac": "Robinson",
+            "abrir_torre": "Rodrigo",
         }
         self.assertEqual(contar_socorristas_cesantes(ago11), 3)
-        # 11 jul: patrón vacante + abrir + 4 refuerzos
+        # 6 ago: Sergio + Robinson + Rodrigo + torre + zodiac; Adrián solo-zodiac no
+        ago6 = {
+            "patron_cesantes": "Adrián",
+            "llave_cesantes": "Sergio",
+            "cesantes": "Robinson; Rodrigo; Vacante 2",
+            "horas_extras": "Esther:8; Fernando:8",
+            "socorrista_chapela": "Fernando",
+            "patron_chapela": "Esther",
+            "socorrista_zodiac": "Claudio",
+            "abrir_torre": "Alejandro",
+        }
+        self.assertEqual(
+            contar_socorristas_cesantes(
+                ago6, sustitutos=["Arturo", "Anxo"], patron_solo_zodiac=["Adrián"]
+            ),
+            5,
+        )
+        # 11 jul: Robinson + Anxo + Claudio + Sergio (zodiac); vacantes no
         jul11 = {
             "patron_cesantes": "Vacante 3",
             "llave_cesantes": "Robinson",
             "cesantes": "Anxo; Claudio; Vacante 1; Vacante 4",
+            "socorrista_zodiac": "Sergio",
             "horas_extras": "Anxo:8",
         }
-        self.assertEqual(contar_socorristas_cesantes(jul11), 6)
+        self.assertEqual(contar_socorristas_cesantes(jul11), 4)
+
+    def test_contar_socorristas_cesantes_csv_agosto(self) -> None:
+        """Tabla de fechas reales del CSV; ampliar con más (fecha, esperado)."""
+        cfg = cargar_config()
+        sustitutos = [
+            n for n in cfg.get("sustitutos", []) if not str(n).startswith("Vacante")
+        ]
+        prefs = cfg.get("preferencias") or {}
+        patron_solo_zodiac = list(prefs.get("patron_solo_zodiac") or [])
+        por_fecha = {f["fecha"]: f for f in cargar_filas_csv()}
+        casos = (
+            ("2026-08-04", 3),  # Robinson + Sergio (zodiac) + Rodrigo (torre)
+            ("2026-08-06", 5),  # Sergio + Robinson + Rodrigo + Claudio + Alejandro; Adrián no
+            ("2026-08-08", 3),  # Anxo + Alejandro + Claudio (torre); Adrián no
+            ("2026-08-11", 3),  # Sergio + Robinson (zodiac) + Rodrigo (torre)
+            ("2026-07-11", 4),  # Robinson + Anxo + Claudio + Sergio (zodiac)
+        )
+        for fecha, esperado in casos:
+            with self.subTest(fecha=fecha):
+                self.assertIn(fecha, por_fecha)
+                self.assertEqual(
+                    contar_socorristas_cesantes(
+                        por_fecha[fecha],
+                        sustitutos=sustitutos,
+                        patron_solo_zodiac=patron_solo_zodiac,
+                    ),
+                    esperado,
+                )
 
     def test_parse_horas_pendientes(self) -> None:
         from turnos_common import parse_horas_pendientes
@@ -696,10 +770,16 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertIn("Fernando", html)
         self.assertIn("16 h", html)
         self.assertIn('class="ces-n"', html)
-        # 11 ago: Vacante 3 + Sergio + Vacante 1
+        # 11 ago: Sergio + Robinson (zodiac) + Rodrigo (torre)
         self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="3"')
-        # 11 jul: 6 puestos (incluye vacantes)
-        self.assertRegex(html, r'data-fecha="2026-07-11"[^>]*data-cesantes="6"')
+        # 8 ago: Anxo + Alejandro + Claudio (torre); Adrián solo-zodiac no cuenta
+        self.assertRegex(html, r'data-fecha="2026-08-08"[^>]*data-cesantes="3"')
+        # 4 ago: Robinson + Sergio (zodiac) + Rodrigo (torre)
+        self.assertRegex(html, r'data-fecha="2026-08-04"[^>]*data-cesantes="3"')
+        # 6 ago: Sergio + Robinson + Rodrigo + torre + zodiac; Adrián solo-zodiac no
+        self.assertRegex(html, r'data-fecha="2026-08-06"[^>]*data-cesantes="5"')
+        # 11 jul: Robinson + Anxo + Claudio + Sergio (zodiac)
+        self.assertRegex(html, r'data-fecha="2026-07-11"[^>]*data-cesantes="4"')
 
     def test_html_agosto_publico_sin_extras(self) -> None:
         from generar_vista import generar_html

@@ -354,6 +354,8 @@ def generar_html(
     trabajadores = nombres_plantilla(cfg) if cfg else nombres_unicos(filas)
     plantilla_sin_vacantes = [n for n in trabajadores if not es_nombre_vacante(n)]
     sustitutos = sin_vacantes_roster(cfg.get("sustitutos", [])) if cfg else []
+    prefs = (cfg or {}).get("preferencias") or {}
+    patron_solo_zodiac = list(prefs.get("patron_solo_zodiac") or [])
     puestos_por_fecha = {fila["fecha"]: puestos_dia(fila, sustitutos) for fila in filas}
     fechas = [f["fecha"] for f in filas]
     libran = libran_por_fecha(cfg, fechas) if cfg else {}
@@ -409,7 +411,11 @@ def generar_html(
             ]
             vacaciones = vacaciones_por_fecha.get(fila["fecha"], [])
             extras = extras_por_fecha.get(fila["fecha"], {})
-            n_cesantes = contar_socorristas_cesantes(fila, sustitutos=sustitutos)
+            n_cesantes = contar_socorristas_cesantes(
+                fila,
+                sustitutos=sustitutos,
+                patron_solo_zodiac=patron_solo_zodiac,
+            )
             data_personas = html.escape(json.dumps(personas, ensure_ascii=False))
             data_libres = html.escape(json.dumps(libres, ensure_ascii=False))
             data_vacaciones = html.escape(json.dumps(vacaciones, ensure_ascii=False))

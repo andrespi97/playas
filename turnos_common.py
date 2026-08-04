@@ -176,14 +176,67 @@ def nombres_en_cesantes(fila: dict[str, str]) -> list[str]:
     return nombres
 
 
+def _en_puesto_chapela(fila: dict[str, str], nombre: str) -> bool:
+    for campo in ("socorrista_chapela", "patron_chapela", "llave_chapela"):
+        if solo_nombre(fila.get(campo, "").strip()) == nombre:
+            return True
+    return False
+
+
 def contar_socorristas_cesantes(
     fila: dict[str, str],
     *,
     sustitutos: list[str] | None = None,
+    patron_solo_zodiac: list[str] | None = None,
 ) -> int:
-    """Puestos en Cesantes en la card (patrón + abrir + refuerzos; incluye vacantes)."""
-    del sustitutos  # compatibilidad con llamadas existentes
-    return len(nombres_en_cesantes(fila))
+    """Socorristas reales en el lado Cesantes (únicos; las vacantes no cuentan).
+
+    Cuenta nombres no-vacante en:
+    - patrón Cesantes, abrir puesto y refuerzos
+    - Torre (abrir_torre) y Zodiac (socorrista_zodiac), que operan desde Cesantes
+
+    Los ``patron_solo_zodiac`` (p. ej. Adrián) nunca cuentan: solo abren puerto,
+    no refuerzan playa Cesantes (ni aunque figuren como patrón/Zodiac).
+    Si una vacante de Cesantes está cubierta por un extra/sustituto que no
+    figura ya como nombre real, se cuenta el cubridor una vez (sin duplicar
+    ni sumar extras de Chapela).
+    """
+    solo_zodiac = {solo_nombre(n) for n in (patron_solo_zodiac or []) if n}
+    vistos: set[str] = set()
+    resultado: list[str] = []
+
+    def anadir(nombre: str) -> None:
+        if not nombre or es_nombre_vacante(nombre) or nombre in vistos:
+            return
+        if nombre in solo_zodiac:
+            return
+        resultado.append(nombre)
+        vistos.add(nombre)
+
+    for nombre in nombres_en_cesantes(fila):
+        anadir(nombre)
+
+    if torre := solo_nombre(fila.get("abrir_torre", "").strip()):
+        anadir(torre)
+
+    if zodiac := solo_nombre(fila.get("socorrista_zodiac", "").strip()):
+        anadir(zodiac)
+
+    # Cubridores de vacantes de Cesantes que no están ya contados.
+    vacantes_ces = [n for n in nombres_en_cesantes(fila) if es_nombre_vacante(n)]
+    if vacantes_ces:
+        cubridores = cubridores_vacantes_fila(fila, sustitutos or [])
+        for _vacante, cubridor in zip(vacantes_ces, cubridores):
+            if not cubridor or cubridor in vistos:
+                continue
+            if cubridor in solo_zodiac:
+                continue
+            if _en_puesto_chapela(fila, cubridor):
+                continue
+            resultado.append(cubridor)
+            vistos.add(cubridor)
+
+    return len(resultado)
 
 
 def parse_horas_pendientes(cfg: dict | None) -> dict[str, float]:
