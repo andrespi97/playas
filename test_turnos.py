@@ -41,9 +41,11 @@ from turnos_common import (  # noqa: E402
     fechas_bloqueadas_csv,
     contar_horas_fila,
     contar_horas_por_mes,
+    contar_socorristas_cesantes,
     cubridores_vacantes_fila,
     fecha_congelacion_limite,
     nombres_asignados_dia,
+    nombres_en_cesantes,
     parse_fecha,
     parse_horas_extras,
     parse_lista_nombres,
@@ -636,7 +638,68 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(por_mes[(2026, 7)]["Esther"]["total"], 0.0)
         self.assertEqual(por_mes[(2026, 8)]["Fernando"]["horas_turno"], 8.0)
 
+    def test_contar_socorristas_cesantes(self) -> None:
+        fila = {
+            "patron_cesantes": "Adrián",
+            "llave_cesantes": "Claudio",
+            "cesantes": "Vacante 1; Vacante 2",
+            "horas_extras": "",
+        }
+        self.assertEqual(nombres_en_cesantes(fila), ["Adrián", "Claudio", "Vacante 1", "Vacante 2"])
+        # Incluye vacantes (= filas visibles en la card)
+        self.assertEqual(contar_socorristas_cesantes(fila), 4)
+        # 11 ago típico: Vacante 3 + Sergio + Vacante 1
+        ago11 = {
+            "patron_cesantes": "Vacante 3",
+            "llave_cesantes": "Sergio",
+            "cesantes": "Vacante 1",
+        }
+        self.assertEqual(contar_socorristas_cesantes(ago11), 3)
+        # 11 jul: patrón vacante + abrir + 4 refuerzos
+        jul11 = {
+            "patron_cesantes": "Vacante 3",
+            "llave_cesantes": "Robinson",
+            "cesantes": "Anxo; Claudio; Vacante 1; Vacante 4",
+            "horas_extras": "Anxo:8",
+        }
+        self.assertEqual(contar_socorristas_cesantes(jul11), 6)
 
+    def test_parse_horas_pendientes(self) -> None:
+        from turnos_common import parse_horas_pendientes
+
+        cfg = cargar_config()
+        pendientes = parse_horas_pendientes(cfg)
+        self.assertEqual(pendientes.get("Alejandro"), 8.0)
+        self.assertEqual(pendientes.get("Claudio"), 8.0)
+        self.assertEqual(pendientes.get("Fernando"), 16.0)
+        self.assertEqual(sum(pendientes.values()), 32.0)
+
+    def test_html_cuadrante_recuento_extras_y_cesantes(self) -> None:
+        from generar_vista import generar_html
+
+        cfg = cargar_config()
+        html = generar_html(
+            cargar_filas_csv(),
+            "Turnos playas 2026",
+            "Jul–Sep 2026",
+            cfg,
+            pages=False,
+            ocultar_extras=False,
+        )
+        self.assertIn('class="recuento-extras"', html)
+        self.assertIn("<details", html)
+        self.assertIn("<summary>", html)
+        self.assertIn("Horas extras · Julio 2026", html)
+        self.assertIn('class="tabla-extras"', html)
+        self.assertIn('id="pendientes-pagar"', html)
+        self.assertIn("Pendientes de pagar", html)
+        self.assertIn("Fernando", html)
+        self.assertIn("16 h", html)
+        self.assertIn('class="ces-n"', html)
+        # 11 ago: Vacante 3 + Sergio + Vacante 1
+        self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="3"')
+        # 11 jul: 6 puestos (incluye vacantes)
+        self.assertRegex(html, r'data-fecha="2026-07-11"[^>]*data-cesantes="6"')
 
     def test_html_agosto_publico_sin_extras(self) -> None:
         from generar_vista import generar_html
@@ -658,10 +721,17 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertNotIn('id="mostrar-extras"', html)
         self.assertNotIn("Mostrar horas extra", html)
         self.assertNotIn("horas.html", html)
+        self.assertNotIn('class="recuento-extras"', html)
+        self.assertNotIn("tabla-extras", html)
+        self.assertNotIn("recuento-extras", html)
+        self.assertNotIn("pendientes-pagar", html)
+        self.assertNotIn("Pendientes de pagar", html)
         self.assertIn("const EXTRAS = {}", html)
         # Sin horas de extras en el DOM (bloques vacíos / JSON vacío)
         self.assertNotIn('class="extra"', html)
         self.assertNotIn("data-horas=", html)
+        # Contador Cesantes sí (no es info de extras)
+        self.assertIn('class="ces-n"', html)
         # El cuadrante de puestos sí está
         self.assertIn("Soc. Chapela", html)
         self.assertIn("Robinson", html)

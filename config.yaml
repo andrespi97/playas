@@ -10,12 +10,18 @@ periodo:
 # - hasta: fija manualmente hasta qué fecha incluir (útil tras editar el CSV)
 # Edición manual: cambia turnos_jul_sep_2026.csv; marca bloqueado=1 en días que no quieras recalcular
 # Publicar web: python3 generar_vista.py genera turnos.html + docs/ (Pages); luego git push
-# Pantallas: Cuadrante (calendario con checkbox de extras) y docs/agosto.html (público sin extras)
+# Pantallas: Cuadrante (calendario + recuento de extras + checkbox día a día) y docs/agosto.html (público sin extras)
 # Columnas admin (mismo CSV):
 #   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
 #   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
-#   horas_extras — Nombre:horas; Nombre:horas (solo manual; checkbox «Mostrar horas extra»)
+#   horas_extras — Nombre:horas; Nombre:horas (solo manual; checkbox «Mostrar horas extra» + tabla de recuento)
 #   bloqueado    — 1 o x: la fila no se toca jamás al regenerar
+# Horas extras aún no pagadas (editar a mano; se muestra en el cuadrante, no en agosto público):
+horas_pendientes:
+  Alejandro: 8
+  Claudio: 8
+  Fernando: 16
+
 congelado:
   pasado_automatico: true
   hasta: "2026-07-03"

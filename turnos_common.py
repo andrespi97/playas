@@ -159,6 +159,55 @@ def nombres_cesantes_fila(fila: dict[str, str]) -> list[str]:
     return nombres
 
 
+def nombres_en_cesantes(fila: dict[str, str]) -> list[str]:
+    """Puestos en playa Cesantes ese día: patrón, abrir puesto y refuerzos."""
+    nombres: list[str] = []
+    vistos: set[str] = set()
+    for campo in ("patron_cesantes", "llave_cesantes"):
+        if valor := fila.get(campo, "").strip():
+            sn = solo_nombre(valor)
+            if sn and sn not in vistos:
+                nombres.append(sn)
+                vistos.add(sn)
+    for nombre in nombres_cesantes_fila(fila):
+        if nombre and nombre not in vistos:
+            nombres.append(nombre)
+            vistos.add(nombre)
+    return nombres
+
+
+def contar_socorristas_cesantes(
+    fila: dict[str, str],
+    *,
+    sustitutos: list[str] | None = None,
+) -> int:
+    """Puestos en Cesantes en la card (patrón + abrir + refuerzos; incluye vacantes)."""
+    del sustitutos  # compatibilidad con llamadas existentes
+    return len(nombres_en_cesantes(fila))
+
+
+def parse_horas_pendientes(cfg: dict | None) -> dict[str, float]:
+    """Horas extras pendientes de pagar (config.yaml → horas_pendientes)."""
+    if not cfg:
+        return {}
+    bruto = cfg.get("horas_pendientes") or {}
+    if not isinstance(bruto, dict):
+        return {}
+    resultado: dict[str, float] = {}
+    for clave, valor in bruto.items():
+        nombre = solo_nombre(str(clave).strip())
+        if not nombre or es_nombre_vacante(nombre):
+            continue
+        try:
+            horas = float(valor)
+        except (TypeError, ValueError):
+            continue
+        if horas <= 0:
+            continue
+        resultado[nombre] = horas
+    return dict(sorted(resultado.items(), key=lambda p: (-p[1], p[0].casefold())))
+
+
 def normalizar_fila_csv(fila: dict[str, str]) -> dict[str, str]:
     """Une cesantes2+ en cesantes y elimina columnas legacy."""
     fila = dict(fila)

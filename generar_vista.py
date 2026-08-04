@@ -21,9 +21,13 @@ from turnos_common import (
     PUESTOS_ASIGNACION,
     cargar_config,
     cargar_filas_csv,
+    contar_horas_por_mes,
+    contar_socorristas_cesantes,
     etiqueta_periodo,
+    es_nombre_vacante,
     parse_fecha,
     parse_horas_extras,
+    parse_horas_pendientes,
     parse_lista_nombres,
     publicar_html_github_pages,
     marcar_vacantes_cubiertas,
@@ -245,6 +249,86 @@ def render_extra(nombre: str, horas: float) -> str:
     )
 
 
+def render_recuento_extras(
+    personas: dict[str, dict[str, float | int]],
+    *,
+    y: int,
+    m: int,
+) -> str:
+    """Tabla de horas extras por persona para un mes (colapsable, cerrada por defecto)."""
+    filas_tabla = sorted(
+        (
+            (nombre, datos)
+            for nombre, datos in personas.items()
+            if not es_nombre_vacante(nombre)
+        ),
+        key=lambda par: (-float(par[1]["horas_extras"]), par[0].casefold()),
+    )
+    total_extras = sum(float(p["horas_extras"]) for _, p in filas_tabla)
+    total_dias = sum(int(p["dias_extra"]) for _, p in filas_tabla)
+    total_txt = formatear_horas(total_extras)
+    filas_html: list[str] = []
+    for nombre, datos in filas_tabla:
+        horas = float(datos["horas_extras"])
+        dias = int(datos["dias_extra"])
+        clase = ' class="sin-extras"' if horas == 0 else ""
+        filas_html.append(
+            f"<tr{clase}>"
+            f'<td class="nombre">{html.escape(nombre)}</td>'
+            f'<td class="num">{dias}</td>'
+            f'<td class="num extras">{html.escape(formatear_horas(horas))} h</td>'
+            f"</tr>"
+        )
+    cuerpo = "".join(filas_html) or (
+        '<tr class="sin-extras"><td colspan="3">Sin horas extras este mes</td></tr>'
+    )
+    resumen = f"Horas extras · {MESES[m]} {y} · {total_txt} h"
+    return (
+        f'<details class="recuento-extras" id="recuento-{y}-{m:02d}">'
+        f"<summary>{html.escape(resumen)}</summary>"
+        f'<div class="tabla-wrap"><table class="tabla-extras">'
+        f"<thead><tr>"
+        f"<th>Persona</th>"
+        f'<th title="Días con horas extras">Días</th>'
+        f"<th>Horas extras</th>"
+        f"</tr></thead>"
+        f"<tbody>{cuerpo}</tbody>"
+        f"<tfoot><tr>"
+        f"<td>Total</td>"
+        f'<td class="num">{total_dias}</td>'
+        f'<td class="num extras">{html.escape(total_txt)} h</td>'
+        f"</tr></tfoot>"
+        f"</table></div></details>"
+    )
+
+
+def render_horas_pendientes(pendientes: dict[str, float]) -> str:
+    """Bloque colapsable de horas extras pendientes de pagar (config.yaml)."""
+    if not pendientes:
+        return ""
+    total = sum(pendientes.values())
+    total_txt = formatear_horas(total)
+    filas = "".join(
+        f'<tr><td class="nombre">{html.escape(nombre)}</td>'
+        f'<td class="num extras">{html.escape(formatear_horas(horas))} h</td></tr>'
+        for nombre, horas in pendientes.items()
+    )
+    resumen = f"Pendientes de pagar · {total_txt} h"
+    return (
+        f'<details class="recuento-extras pendientes-pagar" id="pendientes-pagar">'
+        f"<summary>{html.escape(resumen)}</summary>"
+        f'<div class="tabla-wrap"><table class="tabla-extras">'
+        f"<thead><tr><th>Persona</th><th>Horas pendientes</th></tr></thead>"
+        f"<tbody>{filas}</tbody>"
+        f"<tfoot><tr><td>Total</td>"
+        f'<td class="num extras">{html.escape(total_txt)} h</td></tr></tfoot>'
+        f"</table></div>"
+        f'<p class="nota-pendientes">Editable en <code>config.yaml</code> → '
+        f"<code>horas_pendientes</code>.</p>"
+        f"</details>"
+    )
+
+
 def generar_html(
     filas: list[dict[str, str]],
     titulo: str,
@@ -268,6 +352,7 @@ def generar_html(
         ]
     por_mes = filas_por_mes(filas)
     trabajadores = nombres_plantilla(cfg) if cfg else nombres_unicos(filas)
+    plantilla_sin_vacantes = [n for n in trabajadores if not es_nombre_vacante(n)]
     sustitutos = sin_vacantes_roster(cfg.get("sustitutos", [])) if cfg else []
     puestos_por_fecha = {fila["fecha"]: puestos_dia(fila, sustitutos) for fila in filas}
     fechas = [f["fecha"] for f in filas]
@@ -282,6 +367,11 @@ def generar_html(
                 extras_por_fecha[fila["fecha"]] = parse_horas_extras(fila.get("horas_extras", ""))
             except ValueError:
                 extras_por_fecha[fila["fecha"]] = {}
+    horas_por_mes = (
+        contar_horas_por_mes(filas, plantilla=plantilla_sin_vacantes)
+        if not ocultar_extras
+        else {}
+    )
     datos = {
         fecha: [
             {
@@ -319,6 +409,7 @@ def generar_html(
             ]
             vacaciones = vacaciones_por_fecha.get(fila["fecha"], [])
             extras = extras_por_fecha.get(fila["fecha"], {})
+            n_cesantes = contar_socorristas_cesantes(fila, sustitutos=sustitutos)
             data_personas = html.escape(json.dumps(personas, ensure_ascii=False))
             data_libres = html.escape(json.dumps(libres, ensure_ascii=False))
             data_vacaciones = html.escape(json.dumps(vacaciones, ensure_ascii=False))
@@ -330,11 +421,17 @@ def generar_html(
                 render_extra(n, h)
                 for n, h in sorted(extras.items(), key=lambda p: p[0].casefold())
             )
+            ces_txt = (
+                f'<span class="ces-n" title="{n_cesantes} en Cesantes">'
+                f"{n_cesantes} Ces.</span>"
+            )
             celdas.append(
                 f'<article class="dia" data-fecha="{fila["fecha"]}" '
+                f'data-cesantes="{n_cesantes}" '
                 f"data-personas='{data_personas}' data-libres='{data_libres}' "
                 f"data-vacaciones='{data_vacaciones}' data-extras='{data_extras}'>"
                 f'<header class="dia-cab"><span class="num">{d.day}</span>'
+                f"{ces_txt}"
                 f'<span class="sem">{DIAS_SEM[d.weekday()]}</span></header>'
                 f'<div class="puestos">{lineas}</div>'
                 f'<div class="vacaciones">{lineas_vac}</div>'
@@ -343,9 +440,17 @@ def generar_html(
             )
 
         grid = "\n".join(celdas)
+        recuento = ""
+        if not ocultar_extras:
+            recuento = render_recuento_extras(
+                horas_por_mes.get((y, m), {}),
+                y=y,
+                m=m,
+            )
         bloques_mes.append(
             f'<section class="mes" id="mes-{y}-{m:02d}" data-y="{y}" data-m="{m}">'
             f'<h2>{MESES[m]} {y}</h2>'
+            f"{recuento}"
             f'<div class="cab-sem">'
             + "".join(f"<span>{d}</span>" for d in ("Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"))
             + f'</div><div class="rejilla">{grid}</div></section>'
@@ -360,12 +465,95 @@ def generar_html(
         for m in meses_nav
     )
     check_extras_html = ""
+    css_recuento = ""
+    css_pdf_recuento = ""
+    bloque_pendientes = ""
     if not ocultar_extras:
+        pendientes = parse_horas_pendientes(cfg)
+        bloque_pendientes = render_horas_pendientes(pendientes)
         check_extras_html = """
       <label class="check-libres">
         <input type="checkbox" id="mostrar-extras">
         Mostrar horas extra
       </label>"""
+        css_recuento = """
+    .recuento-extras {
+      margin: 0 0 1rem;
+      background: var(--tarjeta);
+      border: 1px solid var(--borde);
+      border-radius: 14px;
+      box-shadow: var(--sombra);
+      overflow: hidden;
+    }
+    .recuento-extras > summary {
+      list-style: none;
+      cursor: pointer;
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(1.25rem, 3.5vw, 1.75rem);
+      font-weight: 400;
+      color: var(--mar);
+      padding: 0.9rem 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      user-select: none;
+    }
+    .recuento-extras > summary::-webkit-details-marker { display: none; }
+    .recuento-extras > summary::before {
+      content: "▸";
+      font-family: "DM Sans", system-ui, sans-serif;
+      font-size: 0.85em;
+      color: #6d28d9;
+      transition: transform 0.15s;
+    }
+    .recuento-extras[open] > summary::before { transform: rotate(90deg); }
+    .recuento-extras.pendientes-pagar > summary::before { color: #b45309; }
+    .tabla-wrap { overflow-x: auto; }
+    .tabla-extras {
+      width: 100%; border-collapse: collapse; font-size: 0.92rem;
+    }
+    .tabla-extras th, .tabla-extras td {
+      padding: 0.55rem 0.9rem; text-align: left;
+      border-bottom: 1px solid var(--borde);
+    }
+    .tabla-extras th {
+      background: #ede9fe; color: #5b21b6;
+      font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.03em; font-weight: 700; white-space: nowrap;
+    }
+    .pendientes-pagar .tabla-extras th {
+      background: #ffedd5; color: #9a3412;
+    }
+    .tabla-extras td.num, .tabla-extras th:not(:first-child) { text-align: right; }
+    .tabla-extras td.nombre { font-weight: 600; }
+    .tabla-extras td.extras { color: #6d28d9; font-weight: 700; }
+    .pendientes-pagar .tabla-extras td.extras { color: #c2410c; }
+    .tabla-extras tbody tr:hover { background: #faf5ff; }
+    .pendientes-pagar .tabla-extras tbody tr:hover { background: #fff7ed; }
+    .tabla-extras tr.sin-extras { opacity: 0.4; }
+    .tabla-extras tfoot td {
+      background: #f8fafc; font-weight: 700; border-bottom: none; color: var(--mar);
+    }
+    .tabla-extras tfoot td.extras { color: #6d28d9; }
+    .pendientes-pagar .tabla-extras tfoot td.extras { color: #c2410c; }
+    .nota-pendientes {
+      padding: 0.55rem 1rem 0.85rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .nota-pendientes code {
+      font-size: 0.85em;
+      background: #f1f5f9;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+    }
+    @media (max-width: 640px) {
+      .tabla-extras { font-size: 0.82rem; }
+      .tabla-extras th, .tabla-extras td { padding: 0.45rem 0.55rem; }
+    }"""
+        css_pdf_recuento = (
+            "    .pdf-export .recuento-extras { display: none; }\n"
+        )
     leyenda_extra = ""
     if not ocultar_extras:
         leyenda_extra = (
@@ -481,11 +669,18 @@ def generar_html(
     .dia.vacio {{ background: transparent; border: none; box-shadow: none; min-height: 0; }}
     .dia-cab {{
       display: flex; justify-content: space-between; align-items: baseline;
-      margin-bottom: 0.35rem; padding-bottom: 0.25rem;
+      gap: 0.25rem; margin-bottom: 0.35rem; padding-bottom: 0.25rem;
       border-bottom: 1px solid var(--espuma);
     }}
     .dia-cab .num {{ font-weight: 700; font-size: 1rem; color: var(--mar); }}
+    .dia-cab .ces-n {{
+      font-size: 0.58rem; font-weight: 700; color: #475569;
+      background: #f1f5f9; border: 1px solid #cbd5e1;
+      border-radius: 999px; padding: 0.1rem 0.35rem;
+      margin-left: auto; white-space: nowrap;
+    }}
     .dia-cab .sem {{ font-size: 0.65rem; color: var(--muted); font-weight: 600; }}
+{css_recuento}
     .puestos {{ flex: 1; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }}
     .puesto {{
       font-size: 0.62rem; line-height: 1.25; padding: 2px 4px;
@@ -635,7 +830,11 @@ def generar_html(
       margin-bottom: 0.15rem; padding-bottom: 0.1rem;
     }}
     .pdf-export .dia-cab .num {{ font-size: 0.7rem; }}
+    .pdf-export .dia-cab .ces-n {{
+      font-size: 0.42rem; padding: 0 0.25rem; margin-left: auto;
+    }}
     .pdf-export .dia-cab .sem {{ font-size: 0.5rem; }}
+{css_pdf_recuento}
     .pdf-export .puestos,
     .pdf-export .libres,
     .pdf-export .vacaciones,
@@ -712,6 +911,7 @@ def generar_html(
       </button>
     </nav>
     <div id="mi-resumen" class="mi-resumen"></div>
+    {bloque_pendientes}
     {"".join(bloques_mes)}
     <div class="leyenda">
       <span><strong>Chapela</strong> · playa Chapela (verde) · 🔑 lleva llave</span>
