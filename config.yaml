@@ -114,10 +114,11 @@ preferencias:
     - "Robinson Ubaldo Rodríguez De Jesús"
     - "Sergio Amoedo Domínguez"
 
-  # Zodiac: Claudio y Alex (4 días seguidos por bloque)
+  # Zodiac: Alex + Robinson (Claudio lesionado; si Robinson y Claudio coinciden, Zodiac = Robinson)
   socorrista_zodiac:
-    - "Claudio Pazos González"
     - "Alejandro Panadeiros Covelo"
+    - "Robinson Ubaldo Rodríguez De Jesús"
+  # Claudio fuera de zodiac por lesión (sigue en rotación G2 en otros puestos)
 
   # Si G2 libra, zodiac lo cubren Sergio/Robinson
   socorrista_zodiac_reserva:
