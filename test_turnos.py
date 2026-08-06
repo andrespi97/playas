@@ -722,7 +722,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         casos = (
             ("2026-08-04", 3),  # Robinson + Sergio (zodiac) + Rodrigo (torre)
             ("2026-08-06", 5),  # Sergio + Robinson + Rodrigo + Claudio + Alejandro; Adrián no
-            ("2026-08-08", 3),  # Anxo + Alejandro + Claudio (torre); Adrián no
+            ("2026-08-08", 4),  # Anxo + Alejandro + Claudio + Rodrigo (extra); Adrián no
             ("2026-08-11", 3),  # Sergio + Robinson (zodiac) + Rodrigo (torre)
             ("2026-07-11", 4),  # Robinson + Anxo + Claudio + Sergio (zodiac)
         )
@@ -773,7 +773,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         # 11 ago: Sergio + Robinson (zodiac) + Rodrigo (torre)
         self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="3"')
         # 8 ago: Anxo + Alejandro + Claudio (torre); Adrián solo-zodiac no cuenta
-        self.assertRegex(html, r'data-fecha="2026-08-08"[^>]*data-cesantes="3"')
+        self.assertRegex(html, r'data-fecha="2026-08-08"[^>]*data-cesantes="4"')
         # 4 ago: Robinson + Sergio (zodiac) + Rodrigo (torre)
         self.assertRegex(html, r'data-fecha="2026-08-04"[^>]*data-cesantes="3"')
         # 6 ago: Sergio + Robinson + Rodrigo + torre + zodiac; Adrián solo-zodiac no
