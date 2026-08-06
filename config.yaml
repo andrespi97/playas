@@ -114,11 +114,10 @@ preferencias:
     - "Robinson Ubaldo Rodríguez De Jesús"
     - "Sergio Amoedo Domínguez"
 
-  # Zodiac: Alex + Robinson (Claudio lesionado; si Robinson y Claudio coinciden, Zodiac = Robinson)
+  # Zodiac: solo socorristas (nunca patrones). Alex + Robinson (Claudio lesionado).
   socorrista_zodiac:
     - "Alejandro Panadeiros Covelo"
     - "Robinson Ubaldo Rodríguez De Jesús"
-  # Claudio fuera de zodiac por lesión (sigue en rotación G2 en otros puestos)
 
   # Si G2 libra, zodiac lo cubren Sergio/Robinson
   socorrista_zodiac_reserva:
@@ -127,10 +126,6 @@ preferencias:
 
   llave_chapela_patrones:
     - "Esther Román Figueroa"
-
-  # Patrón activo ese día: solo zodiac (nunca chapela ni cesantes)
-  patron_solo_zodiac:
-    - "Adrián Bouzón Amoedo"
 
   # Abrir puesto: preferencia Sergio/Robinson
   llave_cesantes_pool_g2:

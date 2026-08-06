@@ -187,7 +187,7 @@ def contar_socorristas_cesantes(
     fila: dict[str, str],
     *,
     sustitutos: list[str] | None = None,
-    patron_solo_zodiac: list[str] | None = None,
+    patron_solo_zodiac: list[str] | None = None,  # legacy no-op
 ) -> int:
     """Socorristas reales en el lado Cesantes (únicos; las vacantes no cuentan).
 
@@ -195,20 +195,16 @@ def contar_socorristas_cesantes(
     - patrón Cesantes, abrir puesto y refuerzos
     - Torre (abrir_torre) y Zodiac (socorrista_zodiac), que operan desde Cesantes
 
-    Los ``patron_solo_zodiac`` (p. ej. Adrián) nunca cuentan: solo abren puerto,
-    no refuerzan playa Cesantes (ni aunque figuren como patrón/Zodiac).
     Si una vacante de Cesantes está cubierta por un extra/sustituto que no
     figura ya como nombre real, se cuenta el cubridor una vez (sin duplicar
     ni sumar extras de Chapela).
     """
-    solo_zodiac = {solo_nombre(n) for n in (patron_solo_zodiac or []) if n}
+    del patron_solo_zodiac
     vistos: set[str] = set()
     resultado: list[str] = []
 
     def anadir(nombre: str) -> None:
         if not nombre or es_nombre_vacante(nombre) or nombre in vistos:
-            return
-        if nombre in solo_zodiac:
             return
         resultado.append(nombre)
         vistos.add(nombre)
@@ -228,8 +224,6 @@ def contar_socorristas_cesantes(
         cubridores = cubridores_vacantes_fila(fila, sustitutos or [])
         for _vacante, cubridor in zip(vacantes_ces, cubridores):
             if not cubridor or cubridor in vistos:
-                continue
-            if cubridor in solo_zodiac:
                 continue
             if _en_puesto_chapela(fila, cubridor):
                 continue

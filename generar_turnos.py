@@ -114,7 +114,6 @@ def validar_config(cfg: dict) -> list[str]:
         "prioridad_invertida",
         "solo_socorrista",
         "solo_patron",
-        "patron_solo_zodiac",
     )
     for clave in listas_nombre:
         for nombre in prefs.get(clave, []):
@@ -281,7 +280,6 @@ class PoolsPreferencias:
     prioridad_invertida: set[str]
     solo_socorrista: set[str]
     solo_patron: set[str]
-    patron_solo_zodiac: set[str]
     patron_sustituto_chapela: list[str]
     patron_sustituto_cesantes: list[str]
     pref_patron_chapela: list[str]
@@ -328,7 +326,6 @@ def extraer_pools(cfg: dict) -> PoolsPreferencias:
         prioridad_invertida=set(sin_vacantes_roster(prefs.get("prioridad_invertida", []))),
         solo_socorrista=set(sin_vacantes_roster(prefs.get("solo_socorrista", []))),
         solo_patron=set(sin_vacantes_roster(prefs.get("solo_patron", []))),
-        patron_solo_zodiac=set(sin_vacantes_roster(prefs.get("patron_solo_zodiac", []))),
         patron_sustituto_chapela=sub_chapela,
         patron_sustituto_cesantes=sub_cesantes,
         pref_patron_chapela=prefs.get("patron_chapela", []),
@@ -503,25 +500,15 @@ def nombres_patron_sustituto(cfg: dict) -> set[str]:
 
 
 def patrones_para_roles(patrones: list[Persona], pools: PoolsPreferencias) -> list[Persona]:
-    """Patrones asignables a chapela/cesantes (excluye los que solo van a zodiac)."""
-    return [p for p in patrones if not _nombre_en_conjunto(p.nombre, pools.patron_solo_zodiac)]
+    """Patrones asignables a chapela/cesantes (todos los patrones activos)."""
+    return list(patrones)
 
 
 def patrones_para_chapela(patrones: list[Persona], pools: PoolsPreferencias) -> list[Persona]:
     """Candidatos a patrón Chapela (excluye sustitutos de solo cesantes)."""
     excluir = {solo_nombre(n) for n in pools.patron_sustituto_cesantes}
     excluir.update(pools.patron_sustituto_cesantes)
-
-    titular_presente = False
-    if pools.pref_patron_chapela:
-        titular_presente = buscar_por_nombre(patrones, pools.pref_patron_chapela[0]) is not None
-
-    if titular_presente:
-        base = patrones_para_roles(patrones, pools)
-    else:
-        # Titular chapela no trabaja: patron_solo_zodiac pueden cubrir (p. ej. Adrián si Esther libra)
-        base = patrones
-    return [p for p in base if not _nombre_en_conjunto(p.nombre, excluir)]
+    return [p for p in patrones_para_roles(patrones, pools) if not _nombre_en_conjunto(p.nombre, excluir)]
 
 
 def agregar_patrones_sustituto(
@@ -637,6 +624,19 @@ def validar_cobertura_obligatoria(fila: dict[str, str]) -> str | None:
     for col, etiqueta in CAMPOS_OBLIGATORIOS:
         if not fila.get(col, "").strip():
             return f"Falta {etiqueta}"
+    return None
+
+
+def validar_zodiac_solo_socorrista(fila: dict[str, str], personas: list[Persona]) -> str | None:
+    """Zodiac es puesto de socorrista: un patrón puro no puede figurar ahí."""
+    zodiac = fila.get("socorrista_zodiac", "").strip()
+    if not zodiac:
+        return None
+    sn = solo_nombre(zodiac)
+    es_patron = any(p.rol == "patron" and solo_nombre(p.nombre) == sn for p in personas)
+    es_socorrista = any(p.rol == "socorrista" and solo_nombre(p.nombre) == sn for p in personas)
+    if es_patron and not es_socorrista:
+        return f"Zodiac no puede ser el patrón «{sn}» (solo socorristas)"
     return None
 
 
@@ -949,31 +949,22 @@ def asignar_puestos(
     if llave_cesantes:
         excluidos.add(llave_cesantes.nombre)
 
-    # 2. Zodiac: patrón (Adrián) si trabaja; si no, Claudio/Alex o reserva
+    # 2. Zodiac: solo socorristas (nunca patrones)
     socorrista_zodiac: Persona | None = None
     if g2_trabaja(dia_idx, rotacion):
-        for nombre in pools.patron_solo_zodiac:
-            if p := buscar_por_nombre(patrones, nombre):
-                if patron_chapela and p.nombre == patron_chapela.nombre:
-                    continue
-                socorrista_zodiac = p
-                break
+        roster_z = pools.pref_zodiac
+    else:
+        roster_z = pools.pref_zodiac_reserva
+    nombre_z = zodiac_por_bloque.get(clave, roster_z[0] if roster_z else "")
 
-    if not socorrista_zodiac:
-        if g2_trabaja(dia_idx, rotacion):
-            roster_z = pools.pref_zodiac
-        else:
-            roster_z = pools.pref_zodiac_reserva
-        nombre_z = zodiac_por_bloque.get(clave, roster_z[0] if roster_z else "")
+    candidatos_zodiac = _sin_prioridad_invertida(
+        [s for s in soc_confirmados if s.nombre not in excluidos],
+        invertida,
+    )
+    if g2_trabaja(dia_idx, rotacion):
+        candidatos_zodiac = [s for s in candidatos_zodiac if s.nombre in pools.prefieren_zodiac] or candidatos_zodiac
 
-        candidatos_zodiac = _sin_prioridad_invertida(
-            [s for s in soc_confirmados if s.nombre not in excluidos],
-            invertida,
-        )
-        if g2_trabaja(dia_idx, rotacion):
-            candidatos_zodiac = [s for s in candidatos_zodiac if s.nombre in pools.prefieren_zodiac] or candidatos_zodiac
-
-        socorrista_zodiac = resolver_socorrista(nombre_z, roster_z, candidatos_zodiac, bloque, set())
+    socorrista_zodiac = resolver_socorrista(nombre_z, roster_z, candidatos_zodiac, bloque, set())
 
     if socorrista_zodiac:
         excluidos.add(socorrista_zodiac.nombre)
@@ -1198,6 +1189,8 @@ def generar_csv(
             errores.append(f"{prefijo}: {dup}")
         elif adm := validar_administracion(fila, personas):
             errores.append(f"{prefijo}: {adm}")
+        elif zod := validar_zodiac_solo_socorrista(fila, personas):
+            errores.append(f"{prefijo}: {zod}")
         elif not congelada:
             if cob := validar_cobertura_obligatoria(fila):
                 errores.append(f"{prefijo}: {cob}")
