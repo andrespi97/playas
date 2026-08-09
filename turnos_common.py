@@ -192,19 +192,24 @@ def contar_socorristas_cesantes(
     """Socorristas reales en el lado Cesantes (únicos; las vacantes no cuentan).
 
     Cuenta nombres no-vacante en:
-    - patrón Cesantes, abrir puesto y refuerzos
+    - abrir puesto (llave) y refuerzos de Cesantes
     - Torre (abrir_torre) y Zodiac (socorrista_zodiac), que operan desde Cesantes
 
-    Si una vacante de Cesantes está cubierta por un extra/sustituto que no
-    figura ya como nombre real, se cuenta el cubridor una vez (sin duplicar
-    ni sumar extras de Chapela).
+    El patrón Cesantes no cuenta (ni quien cubra esa vacante).
+
+    Si una vacante de Cesantes (no la del patrón) está cubierta por un
+    extra/sustituto que no figura ya como nombre real, se cuenta el cubridor
+    una vez (sin duplicar ni sumar extras de Chapela).
     """
     del patron_solo_zodiac
     vistos: set[str] = set()
     resultado: list[str] = []
+    patron = solo_nombre(fila.get("patron_cesantes", "").strip())
 
     def anadir(nombre: str) -> None:
         if not nombre or es_nombre_vacante(nombre) or nombre in vistos:
+            return
+        if nombre == patron:
             return
         resultado.append(nombre)
         vistos.add(nombre)
@@ -218,11 +223,13 @@ def contar_socorristas_cesantes(
     if zodiac := solo_nombre(fila.get("socorrista_zodiac", "").strip()):
         anadir(zodiac)
 
-    # Cubridores de vacantes de Cesantes que no están ya contados.
+    # Cubridores de vacantes de Cesantes (excepto la del patrón).
     vacantes_ces = [n for n in nombres_en_cesantes(fila) if es_nombre_vacante(n)]
     if vacantes_ces:
         cubridores = cubridores_vacantes_fila(fila, sustitutos or [])
         for _vacante, cubridor in zip(vacantes_ces, cubridores):
+            if _vacante == patron:
+                continue
             if not cubridor or cubridor in vistos:
                 continue
             if _en_puesto_chapela(fila, cubridor):

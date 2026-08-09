@@ -677,9 +677,9 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             "horas_extras": "",
         }
         self.assertEqual(nombres_en_cesantes(fila), ["Adrián", "Claudio", "Vacante 1", "Vacante 2"])
-        # Solo personas reales (vacantes no cuentan)
-        self.assertEqual(contar_socorristas_cesantes(fila), 2)
-        # Torre y Zodiac suman
+        # Patrón no cuenta; vacantes no cuentan → solo Claudio
+        self.assertEqual(contar_socorristas_cesantes(fila), 1)
+        # Torre y Zodiac suman; patrón vacante no cuenta
         ago4 = {
             "patron_cesantes": "Vacante 3",
             "llave_cesantes": "Robinson",
@@ -688,7 +688,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             "abrir_torre": "Rodrigo",
         }
         self.assertEqual(contar_socorristas_cesantes(ago4), 3)
-        # Adrián como patrón Cesantes + socorristas (ya no va a Zodiac)
+        # Adrián patrón no cuenta; Anxo + Rodrigo + Alejandro + Claudio = 4
         ago8 = {
             "patron_cesantes": "Adrián",
             "llave_cesantes": "Anxo",
@@ -699,7 +699,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         }
         self.assertEqual(
             contar_socorristas_cesantes(ago8, sustitutos=["Arturo", "Anxo"]),
-            5,
+            4,
         )
         # 11 ago: Sergio + Rodrigo + Robinson (zodiac); vacantes no cuentan
         ago11 = {
@@ -710,7 +710,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             "abrir_torre": "Rodrigo",
         }
         self.assertEqual(contar_socorristas_cesantes(ago11), 3)
-        # 6 ago: Adrián (patrón) + Sergio + Robinson + Rodrigo + torre + zodiac = 6
+        # 6 ago: patrón no cuenta → Sergio + Claudio + Rodrigo + Alejandro + Robinson = 5
         ago6 = {
             "patron_cesantes": "Adrián",
             "llave_cesantes": "Sergio",
@@ -723,8 +723,18 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         }
         self.assertEqual(
             contar_socorristas_cesantes(ago6, sustitutos=["Arturo", "Anxo"]),
-            6,
+            5,
         )
+        # Cubridor de la vacante del patrón no cuenta
+        ago5 = {
+            "patron_cesantes": "Vacante 3",
+            "llave_cesantes": "Robinson",
+            "cesantes": "Vacante 1",
+            "socorrista_zodiac": "Sergio",
+            "abrir_torre": "Rodrigo",
+            "horas_extras": "Anxo:4",
+        }
+        self.assertEqual(contar_socorristas_cesantes(ago5), 3)
         # 11 jul: Robinson + Anxo + Claudio + Sergio (zodiac); vacantes no
         jul11 = {
             "patron_cesantes": "Vacante 3",
@@ -744,8 +754,9 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         por_fecha = {f["fecha"]: f for f in cargar_filas_csv()}
         casos = (
             ("2026-08-04", 3),  # Robinson + Sergio (zodiac) + Rodrigo (torre)
-            ("2026-08-06", 6),  # Adrián patrón + Sergio + Robinson + Claudio + Alejandro + Rodrigo
-            ("2026-08-08", 5),  # Adrián + Anxo + Alejandro + Claudio + Rodrigo
+            ("2026-08-05", 3),  # igual que el 4; Anxo cubre patrón → no cuenta
+            ("2026-08-06", 5),  # Sergio + Robinson + Claudio + Alejandro + Rodrigo
+            ("2026-08-08", 4),  # Anxo + Alejandro + Claudio + Rodrigo
             ("2026-08-11", 3),  # Sergio + Robinson (zodiac) + Rodrigo (torre)
             ("2026-07-11", 4),  # Robinson + Anxo + Claudio + Sergio (zodiac)
         )
@@ -794,12 +805,12 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertIn('class="ces-n"', html)
         # 11 ago: Sergio + Robinson (zodiac) + Rodrigo (torre)
         self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="3"')
-        # 8 ago: Adrián patrón + Anxo + Alejandro + Claudio + Rodrigo
-        self.assertRegex(html, r'data-fecha="2026-08-08"[^>]*data-cesantes="5"')
+        # 8 ago: Anxo + Alejandro + Claudio + Rodrigo (patrón no cuenta)
+        self.assertRegex(html, r'data-fecha="2026-08-08"[^>]*data-cesantes="4"')
         # 4 ago: Robinson + Sergio (zodiac) + Rodrigo (torre)
         self.assertRegex(html, r'data-fecha="2026-08-04"[^>]*data-cesantes="3"')
-        # 6 ago: Adrián patrón + 5 socos Cesantes
-        self.assertRegex(html, r'data-fecha="2026-08-06"[^>]*data-cesantes="6"')
+        # 6 ago: 5 socos Cesantes (patrón no cuenta)
+        self.assertRegex(html, r'data-fecha="2026-08-06"[^>]*data-cesantes="5"')
         # 11 jul: Robinson + Anxo + Claudio + Sergio (zodiac)
         self.assertRegex(html, r'data-fecha="2026-07-11"[^>]*data-cesantes="4"')
         # Ningún patrón en Zodiac
