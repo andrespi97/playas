@@ -39,11 +39,11 @@ fecha,socorrista_chapela,patron_chapela,llave_chapela,patron_cesantes,socorrista
 2026-08-07,Fernando,Esther,Esther,Adrián,Robinson,Sergio,Alejandro,Claudio; Rodrigo; Vacante 2,,Esther:8; Fernando:8,1
 2026-08-08,Fernando,Esther,Esther,Adrián,Alejandro,Anxo,Claudio,Rodrigo; Vacante 2,,,1
 2026-08-09,Fernando,Esther,Esther,Adrián,Alejandro,Anxo,Claudio,Arturo; Rodrigo,,,1
-2026-08-10,Fernando,Esther,Esther,Vacante 3,Robinson,Sergio,Rodrigo,Vacante 1,,,
-2026-08-11,Fernando,Esther,Esther,Vacante 3,Robinson,Sergio,Rodrigo,Vacante 1,,,
+2026-08-10,Fernando,Esther,Esther,Vacante 3,Robinson,Sergio,Rodrigo,Vacante 1,,Anxo:4,1
+2026-08-11,Fernando,Esther,Esther,Vacante 3,Robinson,Sergio,Rodrigo,Vacante 1,,Anxo:4,1
 2026-08-12,Alejandro,Esther,Adrián,Adrián,Robinson,Sergio,Claudio,Rodrigo; Vacante 2,,Esther:8,1
 2026-08-13,Alejandro,Adrián,Adrián,Vacante 3,Robinson,Sergio,Claudio,Rodrigo; Vacante 2,,,1
-2026-08-14,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,,Vacante 1; Vacante 2,,,1
+2026-08-14,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,,Vacante 1; Vacante 2,,Anxo:4,1
 2026-08-15,Fernando,Esther,Esther,Adrián,Alejandro,Anxo,Claudio,Arturo; Vacante 2,,,1
 2026-08-16,Fernando,Esther,Esther,Vacante 3,Sergio,Robinson,Rodrigo,Anxo,,,
 2026-08-17,Fernando,Esther,Esther,Vacante 3,Sergio,Robinson,Rodrigo,Vacante 1,,,
