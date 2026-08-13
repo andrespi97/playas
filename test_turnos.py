@@ -362,7 +362,6 @@ class TestSustitutos(unittest.TestCase):
     def test_rober_en_dias_disponibilidad_agosto(self) -> None:
         cfg = cargar_config_validada()
         fechas = (
-            "2026-08-11",
             "2026-08-16",
             "2026-08-17",
             "2026-08-22",
@@ -373,13 +372,19 @@ class TestSustitutos(unittest.TestCase):
         for fecha in fechas:
             fila = next(f for f in cargar_filas_csv() if f["fecha"] == fecha)
             self.assertIn("Rober", nombres_asignados_dia(fila), f"Rober no asignado el {fecha}")
-            self.assertIn("Rober", parse_lista_nombres(fila.get("cesantes", "")), f"Rober no en Cesantes el {fecha}")
             self.assertIn("Rober", sustitutos_presentes_fila(fila, sustitutos), f"Rober ausente el {fecha}")
+            if fecha == "2026-08-16":
+                self.assertEqual(fila.get("socorrista_zodiac"), "Rober")
+            else:
+                self.assertIn(
+                    "Rober",
+                    parse_lista_nombres(fila.get("cesantes", "")),
+                    f"Rober no en Cesantes el {fecha}",
+                )
 
     def test_aaron_en_dias_disponibilidad_agosto(self) -> None:
         cfg = cargar_config_validada()
         fechas = (
-            "2026-08-11",
             "2026-08-14",
             "2026-08-17",
             "2026-08-20",
@@ -394,9 +399,9 @@ class TestSustitutos(unittest.TestCase):
             fila = next(f for f in cargar_filas_csv() if f["fecha"] == fecha)
             self.assertIn("Aaron", nombres_asignados_dia(fila), f"Aaron no asignado el {fecha}")
             self.assertIn("Aaron", sustitutos_presentes_fila(fila, sustitutos), f"Aaron ausente el {fecha}")
-            # Preferentemente Cesantes; el 14 cubre torre vacía
+            # Preferentemente Cesantes; el 14 va de zodiac
             if fecha == "2026-08-14":
-                self.assertEqual(fila.get("abrir_torre"), "Aaron")
+                self.assertEqual(fila.get("socorrista_zodiac"), "Aaron")
             else:
                 self.assertIn(
                     "Aaron",
@@ -733,13 +738,13 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             "abrir_torre": "Rodrigo",
         }
         self.assertEqual(contar_socorristas_cesantes(ago4), 3)
-        # Adrián patrón no cuenta; Anxo + Rodrigo + Alejandro + Claudio = 4
+        # Adrián patrón no cuenta; Claudio + Rodrigo + Alejandro + Anxo = 4
         ago8 = {
             "patron_cesantes": "Adrián",
-            "llave_cesantes": "Anxo",
+            "llave_cesantes": "Claudio",
             "cesantes": "Rodrigo; Vacante 2",
             "socorrista_zodiac": "Alejandro",
-            "abrir_torre": "Claudio",
+            "abrir_torre": "Anxo",
             "horas_extras": "",
         }
         self.assertEqual(
@@ -802,7 +807,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             ("2026-08-05", 3),  # igual que el 4; Anxo cubre patrón → no cuenta
             ("2026-08-06", 5),  # Sergio + Robinson + Claudio + Alejandro + Rodrigo
             ("2026-08-08", 4),  # Anxo + Alejandro + Claudio + Rodrigo
-            ("2026-08-11", 5),  # Sergio + Robinson (zodiac) + Rodrigo (torre) + Rober + Aaron
+            ("2026-08-11", 3),  # Sergio + Robinson (zodiac) + Rodrigo (torre); Rober/Aaron desde el 13
             ("2026-07-11", 4),  # Robinson + Anxo + Claudio + Sergio (zodiac)
         )
         for fecha, esperado in casos:
@@ -848,8 +853,8 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertIn("Fernando", html)
         self.assertIn("16 h", html)
         self.assertIn('class="ces-n"', html)
-        # 11 ago: Sergio + Robinson (zodiac) + Rodrigo (torre) + Rober + Aaron
-        self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="5"')
+        # 11 ago: Sergio + Robinson (zodiac) + Rodrigo (torre); Rober/Aaron desde el 13
+        self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="3"')
         # 8 ago: Anxo + Alejandro + Claudio + Rodrigo (patrón no cuenta)
         self.assertRegex(html, r'data-fecha="2026-08-08"[^>]*data-cesantes="4"')
         # 4 ago: Robinson + Sergio (zodiac) + Rodrigo (torre)

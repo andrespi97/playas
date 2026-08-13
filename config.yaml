@@ -86,7 +86,7 @@ disponibilidad:
       - "2026-08-27"
   Rober:
     fechas:
-      - "2026-08-11"
+      # Empiezan a partir del 13 ago (no días anteriores)
       - "2026-08-16"
       - "2026-08-17"
       - "2026-08-22"
@@ -94,7 +94,6 @@ disponibilidad:
       - "2026-08-29"
   Aaron:
     fechas:
-      - "2026-08-11"
       - "2026-08-14"
       - "2026-08-17"
       - "2026-08-20"
@@ -176,6 +175,12 @@ preferencias:
   # Socorrista y patrón, pero solo se asigna como socorrista (de momento)
   solo_socorrista:
     - "Anxo"
+
+  # Nunca abren puesto (llave Cesantes)
+  no_abrir_puesto:
+    - "Anxo"
+    - "Rober"
+    - "Rodrigo"
 
   # Solo patrón (nunca socorrista)
   # solo_patron:

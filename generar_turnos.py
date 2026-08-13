@@ -114,6 +114,7 @@ def validar_config(cfg: dict) -> list[str]:
         "prioridad_invertida",
         "solo_socorrista",
         "solo_patron",
+        "no_abrir_puesto",
     )
     for clave in listas_nombre:
         for nombre in prefs.get(clave, []):
@@ -280,6 +281,7 @@ class PoolsPreferencias:
     prioridad_invertida: set[str]
     solo_socorrista: set[str]
     solo_patron: set[str]
+    no_abrir_puesto: set[str]
     patron_sustituto_chapela: list[str]
     patron_sustituto_cesantes: list[str]
     pref_patron_chapela: list[str]
@@ -326,6 +328,7 @@ def extraer_pools(cfg: dict) -> PoolsPreferencias:
         prioridad_invertida=set(sin_vacantes_roster(prefs.get("prioridad_invertida", []))),
         solo_socorrista=set(sin_vacantes_roster(prefs.get("solo_socorrista", []))),
         solo_patron=set(sin_vacantes_roster(prefs.get("solo_patron", []))),
+        no_abrir_puesto=set(sin_vacantes_roster(prefs.get("no_abrir_puesto", []))),
         patron_sustituto_chapela=sub_chapela,
         patron_sustituto_cesantes=sub_cesantes,
         pref_patron_chapela=prefs.get("patron_chapela", []),
@@ -640,6 +643,20 @@ def validar_zodiac_solo_socorrista(fila: dict[str, str], personas: list[Persona]
     return None
 
 
+def validar_no_abrir_puesto(fila: dict[str, str], cfg: dict) -> str | None:
+    """Algunos socorristas no pueden figurar en abrir puesto."""
+    prohibidos = {
+        solo_nombre(n)
+        for n in (cfg.get("preferencias") or {}).get("no_abrir_puesto", [])
+    }
+    if not prohibidos:
+        return None
+    llave = solo_nombre(fila.get("llave_cesantes", "").strip())
+    if llave and llave in prohibidos:
+        return f"{llave} no puede abrir puesto"
+    return None
+
+
 def validar_cobertura_extendida(fila: dict[str, str], socorristas_trabajando: int) -> str | None:
     """Zodiac y torre cuando hay personal suficiente ese día."""
     libres = socorristas_trabajando - 1  # excluye socorrista chapela
@@ -921,7 +938,11 @@ def asignar_puestos(
     pool_llave = _pool_abrir_puesto(pools.pool_llave_g2 + pools.pool_llave_g3, pools.prefieren_zodiac)
     candidatos_llave = _sin_prioridad_invertida(
         [
-            s for s in soc_confirmados if s.nombre not in excluidos and s.nombre not in pools.prefieren_zodiac
+            s
+            for s in soc_confirmados
+            if s.nombre not in excluidos
+            and s.nombre not in pools.prefieren_zodiac
+            and not _nombre_en_conjunto(s.nombre, pools.no_abrir_puesto)
         ],
         invertida,
     )
@@ -934,7 +955,11 @@ def asignar_puestos(
     if not llave_cesantes:
         emergencia = _sin_prioridad_invertida(
             [
-                s for s in soc_confirmados if s.nombre not in excluidos and s.nombre in pools.prefieren_zodiac
+                s
+                for s in soc_confirmados
+                if s.nombre not in excluidos
+                and s.nombre in pools.prefieren_zodiac
+                and not _nombre_en_conjunto(s.nombre, pools.no_abrir_puesto)
             ],
             invertida,
         )
@@ -945,6 +970,18 @@ def asignar_puestos(
             bloque + 1,
             set(),
         )
+
+    # Si aún falta, cualquier socorrista confirmado salvo no_abrir_puesto / invertida
+    if not llave_cesantes:
+        emergencia_libre = _sin_prioridad_invertida(
+            [
+                s
+                for s in soc_confirmados
+                if s.nombre not in excluidos and not _nombre_en_conjunto(s.nombre, pools.no_abrir_puesto)
+            ],
+            invertida,
+        )
+        llave_cesantes = emergencia_libre[0] if emergencia_libre else None
 
     if llave_cesantes:
         excluidos.add(llave_cesantes.nombre)
@@ -1191,6 +1228,8 @@ def generar_csv(
             errores.append(f"{prefijo}: {adm}")
         elif zod := validar_zodiac_solo_socorrista(fila, personas):
             errores.append(f"{prefijo}: {zod}")
+        elif no_llave := validar_no_abrir_puesto(fila, cfg):
+            errores.append(f"{prefijo}: {no_llave}")
         elif not congelada:
             if cob := validar_cobertura_obligatoria(fila):
                 errores.append(f"{prefijo}: {cob}")
