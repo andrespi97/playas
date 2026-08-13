@@ -24,7 +24,7 @@ HORAS_JORNADA = 8.0
 
 # Socorristas cuyas horas siempre van a extras (nunca turno ordinario).
 # Si están asignados sin horas_extras explícitas, cuentan 8 h como extra.
-HORAS_SOLO_EXTRAS = frozenset({"Anxo", "Arturo"})
+HORAS_SOLO_EXTRAS = frozenset({"Aaron", "Anxo", "Arturo", "Rober"})
 
 # Puestos que cuentan como asignación (llave_chapela es metadato)
 PUESTOS_ASIGNACION = (

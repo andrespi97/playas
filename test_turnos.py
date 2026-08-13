@@ -359,6 +359,51 @@ class TestSustitutos(unittest.TestCase):
             self.assertIn("Arturo", presentes, f"Arturo ausente el {fecha}")
             self.assertIn("Arturo", nombres_asignados_dia(fila), f"Arturo no asignado el {fecha}")
 
+    def test_rober_en_dias_disponibilidad_agosto(self) -> None:
+        cfg = cargar_config_validada()
+        fechas = (
+            "2026-08-11",
+            "2026-08-16",
+            "2026-08-17",
+            "2026-08-22",
+            "2026-08-28",
+            "2026-08-29",
+        )
+        sustitutos = cfg.get("sustitutos", [])
+        for fecha in fechas:
+            fila = next(f for f in cargar_filas_csv() if f["fecha"] == fecha)
+            self.assertIn("Rober", nombres_asignados_dia(fila), f"Rober no asignado el {fecha}")
+            self.assertIn("Rober", parse_lista_nombres(fila.get("cesantes", "")), f"Rober no en Cesantes el {fecha}")
+            self.assertIn("Rober", sustitutos_presentes_fila(fila, sustitutos), f"Rober ausente el {fecha}")
+
+    def test_aaron_en_dias_disponibilidad_agosto(self) -> None:
+        cfg = cargar_config_validada()
+        fechas = (
+            "2026-08-11",
+            "2026-08-14",
+            "2026-08-17",
+            "2026-08-20",
+            "2026-08-21",
+            "2026-08-24",
+            "2026-08-27",
+            "2026-08-28",
+            "2026-08-31",
+        )
+        sustitutos = cfg.get("sustitutos", [])
+        for fecha in fechas:
+            fila = next(f for f in cargar_filas_csv() if f["fecha"] == fecha)
+            self.assertIn("Aaron", nombres_asignados_dia(fila), f"Aaron no asignado el {fecha}")
+            self.assertIn("Aaron", sustitutos_presentes_fila(fila, sustitutos), f"Aaron ausente el {fecha}")
+            # Preferentemente Cesantes; el 14 cubre torre vacía
+            if fecha == "2026-08-14":
+                self.assertEqual(fila.get("abrir_torre"), "Aaron")
+            else:
+                self.assertIn(
+                    "Aaron",
+                    parse_lista_nombres(fila.get("cesantes", "")),
+                    f"Aaron no en Cesantes el {fecha}",
+                )
+
     def test_asignado_no_aparece_como_libre(self) -> None:
         from generar_turnos import libran_por_fecha
 
@@ -757,7 +802,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             ("2026-08-05", 3),  # igual que el 4; Anxo cubre patrón → no cuenta
             ("2026-08-06", 5),  # Sergio + Robinson + Claudio + Alejandro + Rodrigo
             ("2026-08-08", 4),  # Anxo + Alejandro + Claudio + Rodrigo
-            ("2026-08-11", 3),  # Sergio + Robinson (zodiac) + Rodrigo (torre)
+            ("2026-08-11", 5),  # Sergio + Robinson (zodiac) + Rodrigo (torre) + Rober + Aaron
             ("2026-07-11", 4),  # Robinson + Anxo + Claudio + Sergio (zodiac)
         )
         for fecha, esperado in casos:
@@ -803,8 +848,8 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertIn("Fernando", html)
         self.assertIn("16 h", html)
         self.assertIn('class="ces-n"', html)
-        # 11 ago: Sergio + Robinson (zodiac) + Rodrigo (torre)
-        self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="3"')
+        # 11 ago: Sergio + Robinson (zodiac) + Rodrigo (torre) + Rober + Aaron
+        self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="5"')
         # 8 ago: Anxo + Alejandro + Claudio + Rodrigo (patrón no cuenta)
         self.assertRegex(html, r'data-fecha="2026-08-08"[^>]*data-cesantes="4"')
         # 4 ago: Robinson + Sergio (zodiac) + Rodrigo (torre)
@@ -1030,14 +1075,16 @@ class TestCongelado(CsvBackupMixin, unittest.TestCase):
 
 
 class TestConfig(unittest.TestCase):
-    def test_plantilla_once_personas(self) -> None:
+    def test_plantilla_con_refuerzos(self) -> None:
         cfg = cargar_config_validada()
         personas = construir_personas(cfg)
         soc = [p for p in personas if p.rol == "socorrista"]
         pat = [p for p in personas if p.rol == "patron"]
-        self.assertEqual(len(soc), 10)
+        self.assertEqual(len(soc), 12)
         self.assertEqual(len(pat), 4)
-        self.assertEqual(len(personas), 14)
+        self.assertEqual(len(personas), 16)
+        nombres = {p.nombre for p in soc}
+        self.assertTrue({"Rober", "Aaron"} <= nombres)
         vacantes = [p.nombre for p in personas if p.nombre.startswith("Vacante")]
         self.assertEqual(sorted(vacantes), ["Vacante 1", "Vacante 2", "Vacante 3"])
 

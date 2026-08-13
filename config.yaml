@@ -36,10 +36,13 @@ rotacion:
 # Grupo 1: Esther (pat) + Fernando + Vacante 1
 # Grupo 2: Adrián (pat) + Claudio + Alex + Vacante 2
 # Grupo 3: Vacante 3 (pat, hueco Pablo) + Robinson + Sergio + Rodrigo
-# Plantilla: 10 socorristas + 4 patrones = 14 entradas (Raúl fuera de momento)
+# Plantilla: 12 socorristas + 4 patrones = 16 entradas (Raúl fuera de momento)
+# Rober / Aaron: refuerzo por días concretos (solo Cesantes / puestos socorrista)
 socorristas:
   - { nombre: "Fernando Franco Martins", grupo: 1 }
   - { nombre: "Arturo", grupo: 1 }
+  - { nombre: "Rober", grupo: 1 }
+  - { nombre: "Aaron", grupo: 1 }
   - { nombre: "Vacante 1", grupo: 1 }
   - { nombre: "Claudio Pazos González", grupo: 2 }
   - { nombre: "Alejandro Panadeiros Covelo", grupo: 2 }
@@ -81,6 +84,25 @@ disponibilidad:
       - "2026-08-21"
       - "2026-08-26"
       - "2026-08-27"
+  Rober:
+    fechas:
+      - "2026-08-11"
+      - "2026-08-16"
+      - "2026-08-17"
+      - "2026-08-22"
+      - "2026-08-28"
+      - "2026-08-29"
+  Aaron:
+    fechas:
+      - "2026-08-11"
+      - "2026-08-14"
+      - "2026-08-17"
+      - "2026-08-20"
+      - "2026-08-21"
+      - "2026-08-24"
+      - "2026-08-27"
+      - "2026-08-28"
+      - "2026-08-31"
   Anxo:
     fines_de_semana: true
   # Raúl:
@@ -98,6 +120,8 @@ disponibilidad:
 sustitutos:
   - "Arturo"
   - "Anxo"
+  - "Rober"
+  - "Aaron"
   # - "Raúl"
 
 preferencias:
@@ -143,8 +167,11 @@ preferencias:
 
   # Orden normal de asignación: puesto → zodiac → torre.
   # Estos van al último hueco libre en orden inverso: zodiac → torre → puesto.
+  # Si no hace falta, quedan en Cesantes (refuerzos por días).
   prioridad_invertida:
     - "Arturo"
+    - "Rober"
+    - "Aaron"
 
   # Socorrista y patrón, pero solo se asigna como socorrista (de momento)
   solo_socorrista:
