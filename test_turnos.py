@@ -384,25 +384,31 @@ class TestSustitutos(unittest.TestCase):
                     f"Rober no en Cesantes el {fecha}",
                 )
 
-    def test_rober_nunca_patron(self) -> None:
+    def test_refuerzos_nunca_patron(self) -> None:
         from generar_vista import puestos_dia
 
         cfg = cargar_config_validada()
         sustitutos = cfg.get("sustitutos", [])
+        prohibidos = {
+            solo_nombre(n)
+            for n in (cfg.get("preferencias") or {}).get("no_patron", [])
+        }
+        self.assertTrue({"Rober", "Aaron"} <= prohibidos)
         for fila in cargar_filas_csv():
             for col in ("patron_chapela", "patron_cesantes"):
-                self.assertNotEqual(
-                    solo_nombre(fila.get(col, "")),
-                    "Rober",
-                    f"Rober como {col} el {fila['fecha']}",
+                nombre = solo_nombre(fila.get(col, ""))
+                self.assertNotIn(
+                    nombre,
+                    prohibidos,
+                    f"{nombre} como {col} el {fila['fecha']}",
                 )
             self.assertIsNone(validar_no_patron(fila, cfg), fila["fecha"])
             for puesto in puestos_dia(fila, sustitutos):
                 if puesto.get("campo") in ("patron_chapela", "patron_cesantes"):
-                    self.assertNotEqual(
+                    self.assertNotIn(
                         puesto.get("sustituto"),
-                        "Rober",
-                        f"Rober cubre vacante de patrón el {fila['fecha']}",
+                        prohibidos,
+                        f"{puesto.get('sustituto')} cubre vacante de patrón el {fila['fecha']}",
                     )
 
     def test_aaron_en_dias_disponibilidad_agosto(self) -> None:

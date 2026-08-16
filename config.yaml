@@ -185,6 +185,7 @@ preferencias:
   # Nunca patrón (Chapela ni Cesantes; tampoco cubren vacante de patrón)
   no_patron:
     - "Rober"
+    - "Aaron"
 
   # Solo patrón (nunca socorrista)
   # solo_patron:
