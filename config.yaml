@@ -182,6 +182,10 @@ preferencias:
     - "Rober"
     - "Rodrigo"
 
+  # Nunca patrón (Chapela ni Cesantes; tampoco cubren vacante de patrón)
+  no_patron:
+    - "Rober"
+
   # Solo patrón (nunca socorrista)
   # solo_patron:
   #   - "Raúl"

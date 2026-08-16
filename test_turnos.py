@@ -32,6 +32,7 @@ from generar_turnos import (  # noqa: E402
     validar_cobertura_obligatoria,
     validar_rotacion_4_2,
     validar_sin_duplicados,
+    validar_no_patron,
     validar_zodiac_solo_socorrista,
 )
 from turnos_common import (  # noqa: E402
@@ -50,6 +51,7 @@ from turnos_common import (  # noqa: E402
     parse_fecha,
     parse_horas_extras,
     parse_lista_nombres,
+    solo_nombre,
     sustitutos_presentes_fila,
 )
 
@@ -381,6 +383,27 @@ class TestSustitutos(unittest.TestCase):
                     parse_lista_nombres(fila.get("cesantes", "")),
                     f"Rober no en Cesantes el {fecha}",
                 )
+
+    def test_rober_nunca_patron(self) -> None:
+        from generar_vista import puestos_dia
+
+        cfg = cargar_config_validada()
+        sustitutos = cfg.get("sustitutos", [])
+        for fila in cargar_filas_csv():
+            for col in ("patron_chapela", "patron_cesantes"):
+                self.assertNotEqual(
+                    solo_nombre(fila.get(col, "")),
+                    "Rober",
+                    f"Rober como {col} el {fila['fecha']}",
+                )
+            self.assertIsNone(validar_no_patron(fila, cfg), fila["fecha"])
+            for puesto in puestos_dia(fila, sustitutos):
+                if puesto.get("campo") in ("patron_chapela", "patron_cesantes"):
+                    self.assertNotEqual(
+                        puesto.get("sustituto"),
+                        "Rober",
+                        f"Rober cubre vacante de patrón el {fila['fecha']}",
+                    )
 
     def test_aaron_en_dias_disponibilidad_agosto(self) -> None:
         cfg = cargar_config_validada()

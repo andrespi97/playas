@@ -33,6 +33,7 @@ from turnos_common import (
     marcar_vacantes_cubiertas,
     cubridores_vacantes_fila,
     sin_vacantes_roster,
+    solo_nombre,
 )
 
 MESES = (
@@ -204,7 +205,16 @@ def puestos_dia(fila: dict[str, str], sustitutos: list[str] | None = None) -> li
     for nombre in parse_lista_nombres(fila.get("cesantes", "")):
         anadir("cesantes", nombre)
 
-    marcar_vacantes_cubiertas(puestos, cubridores_vacantes_fila(fila, sustitutos or []))
+    cfg = cargar_config() if CONFIG_PATH.exists() else {}
+    no_patron = frozenset(
+        solo_nombre(n)
+        for n in (cfg.get("preferencias") or {}).get("no_patron", [])
+    )
+    marcar_vacantes_cubiertas(
+        puestos,
+        cubridores_vacantes_fila(fila, sustitutos or []),
+        no_patron=no_patron,
+    )
     return puestos
 
 
