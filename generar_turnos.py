@@ -282,6 +282,7 @@ class PoolsPreferencias:
     solo_socorrista: set[str]
     solo_patron: set[str]
     no_abrir_puesto: set[str]
+    no_patron: set[str]
     patron_sustituto_chapela: list[str]
     patron_sustituto_cesantes: list[str]
     pref_patron_chapela: list[str]
@@ -329,6 +330,7 @@ def extraer_pools(cfg: dict) -> PoolsPreferencias:
         solo_socorrista=set(sin_vacantes_roster(prefs.get("solo_socorrista", []))),
         solo_patron=set(sin_vacantes_roster(prefs.get("solo_patron", []))),
         no_abrir_puesto=set(sin_vacantes_roster(prefs.get("no_abrir_puesto", []))),
+        no_patron=set(sin_vacantes_roster(prefs.get("no_patron", []))),
         patron_sustituto_chapela=sub_chapela,
         patron_sustituto_cesantes=sub_cesantes,
         pref_patron_chapela=prefs.get("patron_chapela", []),
@@ -504,7 +506,7 @@ def nombres_patron_sustituto(cfg: dict) -> set[str]:
 
 def patrones_para_roles(patrones: list[Persona], pools: PoolsPreferencias) -> list[Persona]:
     """Patrones asignables a chapela/cesantes (todos los patrones activos)."""
-    return list(patrones)
+    return [p for p in patrones if not _nombre_en_conjunto(p.nombre, pools.no_patron)]
 
 
 def patrones_para_chapela(patrones: list[Persona], pools: PoolsPreferencias) -> list[Persona]:
@@ -654,6 +656,21 @@ def validar_no_abrir_puesto(fila: dict[str, str], cfg: dict) -> str | None:
     llave = solo_nombre(fila.get("llave_cesantes", "").strip())
     if llave and llave in prohibidos:
         return f"{llave} no puede abrir puesto"
+    return None
+
+
+def validar_no_patron(fila: dict[str, str], cfg: dict) -> str | None:
+    """Algunos socorristas no pueden figurar como patrón."""
+    prohibidos = {
+        solo_nombre(n)
+        for n in (cfg.get("preferencias") or {}).get("no_patron", [])
+    }
+    if not prohibidos:
+        return None
+    for col, etiqueta in (("patron_chapela", "patrón Chapela"), ("patron_cesantes", "patrón Cesantes")):
+        nombre = solo_nombre(fila.get(col, "").strip())
+        if nombre and nombre in prohibidos:
+            return f"{nombre} no puede ser {etiqueta}"
     return None
 
 
@@ -1230,6 +1247,8 @@ def generar_csv(
             errores.append(f"{prefijo}: {zod}")
         elif no_llave := validar_no_abrir_puesto(fila, cfg):
             errores.append(f"{prefijo}: {no_llave}")
+        elif no_pat := validar_no_patron(fila, cfg):
+            errores.append(f"{prefijo}: {no_pat}")
         elif not congelada:
             if cob := validar_cobertura_obligatoria(fila):
                 errores.append(f"{prefijo}: {cob}")
