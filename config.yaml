@@ -137,15 +137,20 @@ preferencias:
     - "Robinson Ubaldo Rodríguez De Jesús"
     - "Sergio Amoedo Domínguez"
 
-  # Zodiac: solo socorristas (nunca patrones). Alex + Robinson (Claudio lesionado).
+  # Zodiac de reserva: se reparte entre estos (salvo Arturo/Rober).
   socorrista_zodiac:
+    - "Robinson Ubaldo Rodríguez De Jesús"
     - "Alejandro Panadeiros Covelo"
-    - "Robinson Ubaldo Rodríguez De Jesús"
-
-  # Si G2 libra, zodiac lo cubren Sergio/Robinson
-  socorrista_zodiac_reserva:
     - "Sergio Amoedo Domínguez"
+    - "Rodrigo"
+    - "Claudio Pazos González"
+
+  socorrista_zodiac_reserva:
     - "Robinson Ubaldo Rodríguez De Jesús"
+    - "Alejandro Panadeiros Covelo"
+    - "Sergio Amoedo Domínguez"
+    - "Rodrigo"
+    - "Claudio Pazos González"
 
   llave_chapela_patrones:
     - "Esther Román Figueroa"
@@ -164,9 +169,15 @@ preferencias:
     - "Robinson Ubaldo Rodríguez De Jesús"
     - "Fernando Franco Martins"
 
-  # Orden normal de asignación: puesto → zodiac → torre.
+  # Si están de turno, abren Zodiac.
+  abren_zodiac:
+    - "Arturo"
+    - "Rober"
+
+  # Orden normal de asignación: zodiac preferente → puesto → zodiac reserva → torre.
   # Estos van al último hueco libre en orden inverso: zodiac → torre → puesto.
   # Si no hace falta, quedan en Cesantes (refuerzos por días).
+  # Arturo/Rober: Zodiac lo cubre abren_zodiac; aquí solo el segundo si coinciden.
   prioridad_invertida:
     - "Arturo"
     - "Rober"

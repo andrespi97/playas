@@ -32,6 +32,7 @@ from generar_turnos import (  # noqa: E402
     validar_cobertura_obligatoria,
     validar_rotacion_4_2,
     validar_sin_duplicados,
+    validar_abren_zodiac,
     validar_no_patron,
     validar_zodiac_solo_socorrista,
 )
@@ -361,8 +362,101 @@ class TestSustitutos(unittest.TestCase):
             self.assertIn("Arturo", presentes, f"Arturo ausente el {fecha}")
             self.assertIn("Arturo", nombres_asignados_dia(fila), f"Arturo no asignado el {fecha}")
 
+    def test_arturo_o_rober_abren_zodiac_si_presentes(self) -> None:
+        """Días no bloqueados: si Arturo o Rober trabajan, abren Zodiac."""
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        abren = {"Arturo", "Rober"}
+        for fila in cargar_filas_csv():
+            if celda_bloqueada(fila.get("bloqueado", "")):
+                continue
+            presentes = set(nombres_asignados_dia(fila))
+            if presentes & abren:
+                self.assertIn(
+                    fila.get("socorrista_zodiac"),
+                    abren,
+                    f"{fila['fecha']}: Zodiac debe ser Arturo o Rober",
+                )
+            self.assertIsNone(validar_abren_zodiac(fila, cfg), fila["fecha"])
+
+    def test_robinson_no_abre_zodiac_si_esta_en_chapela(self) -> None:
+        """Robinson en Chapela no puede abrir Zodiac el mismo día."""
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        for fila in cargar_filas_csv():
+            if fila.get("socorrista_chapela") == "Robinson":
+                self.assertNotEqual(
+                    fila.get("socorrista_zodiac"),
+                    "Robinson",
+                    f"{fila['fecha']}: Robinson en Chapela no abre Zodiac",
+                )
+
+    def test_reserva_zodiac_reparte_pool(self) -> None:
+        """Sin Arturo/Rober, Zodiac lo cubren Robinson, Alejandro, Sergio, Rodrigo o Claudio."""
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        pool = {"Robinson", "Alejandro", "Sergio", "Rodrigo", "Claudio"}
+        usados: set[str] = set()
+        n = 0
+        for fila in cargar_filas_csv():
+            if parse_fecha(fila["fecha"]) < date(2026, 8, 18):
+                continue
+            z = fila.get("socorrista_zodiac", "").strip()
+            presentes = set(nombres_asignados_dia(fila))
+            if presentes & {"Arturo", "Rober"}:
+                continue
+            if not z:
+                continue
+            self.assertIn(z, pool, f"{fila['fecha']}: Zodiac de reserva debe ser {pool}")
+            usados.add(z)
+            n += 1
+        self.assertGreaterEqual(n, 4)
+        self.assertGreaterEqual(
+            len(usados),
+            3,
+            "Zodiac de reserva no debe recaer siempre en las mismas personas",
+        )
+
+    def test_validar_abren_zodiac(self) -> None:
+        cfg = cargar_config_validada()
+        self.assertIsNone(
+            validar_abren_zodiac(
+                {"socorrista_zodiac": "Rober", "cesantes": "Aaron"},
+                cfg,
+            )
+        )
+        self.assertIsNone(
+            validar_abren_zodiac(
+                {"socorrista_zodiac": "Claudio", "cesantes": "Aaron"},
+                cfg,
+            )
+        )
+        err = validar_abren_zodiac(
+            {"socorrista_zodiac": "Claudio", "cesantes": "Arturo"},
+            cfg,
+        )
+        self.assertIsNotNone(err)
+        self.assertIn("Arturo", err or "")
+        self.assertIsNone(
+            validar_abren_zodiac(
+                {
+                    "socorrista_chapela": "Robinson",
+                    "socorrista_zodiac": "Claudio",
+                    "cesantes": "Aaron",
+                },
+                cfg,
+            )
+        )
+        self.assertIsNone(
+            validar_abren_zodiac(
+                {"socorrista_zodiac": "Claudio", "cesantes": "Robinson"},
+                cfg,
+            )
+        )
+
     def test_rober_en_dias_disponibilidad_agosto(self) -> None:
         cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
         fechas = (
             "2026-08-16",
             "2026-08-17",
@@ -375,14 +469,9 @@ class TestSustitutos(unittest.TestCase):
             fila = next(f for f in cargar_filas_csv() if f["fecha"] == fecha)
             self.assertIn("Rober", nombres_asignados_dia(fila), f"Rober no asignado el {fecha}")
             self.assertIn("Rober", sustitutos_presentes_fila(fila, sustitutos), f"Rober ausente el {fecha}")
-            if fecha == "2026-08-16":
-                self.assertEqual(fila.get("socorrista_zodiac"), "Rober")
-            else:
-                self.assertIn(
-                    "Rober",
-                    parse_lista_nombres(fila.get("cesantes", "")),
-                    f"Rober no en Cesantes el {fecha}",
-                )
+            if celda_bloqueada(fila.get("bloqueado", "")):
+                continue
+            self.assertEqual(fila.get("socorrista_zodiac"), "Rober", fecha)
 
     def test_refuerzos_nunca_patron(self) -> None:
         from generar_vista import puestos_dia
