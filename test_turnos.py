@@ -272,6 +272,24 @@ class TestRotacion4x2(unittest.TestCase):
                     f"{nombre} asignado el {fila['fecha']} en día libre sin horas_extras",
                 )
 
+    def test_rodrigo_cambia_miercoles_19_por_26(self) -> None:
+        """Trueque de miércoles: libra el 19 (trabajo G3) y trabaja el 26 (libranza G3)."""
+        cfg = cargar_config_validada()
+        rot = cfg["rotacion"]
+        inicio = parse_fecha(cfg["periodo"]["inicio"])
+        filas = {f["fecha"]: f for f in filas_csv()}
+        self.assertTrue(trabaja_en_dia((parse_fecha("2026-08-19") - inicio).days, 3, rot))
+        self.assertFalse(trabaja_en_dia((parse_fecha("2026-08-26") - inicio).days, 3, rot))
+        self.assertNotIn("Rodrigo", nombres_asignados_dia(filas["2026-08-19"]))
+        self.assertIn("Rodrigo", nombres_asignados_dia(filas["2026-08-26"]))
+        self.assertNotIn("Rodrigo", parse_horas_extras(filas["2026-08-26"].get("horas_extras", "")))
+
+    def test_rodrigo_no_fin_de_agosto(self) -> None:
+        """Rodrigo no trabaja el 28–30 ago (vie–dom)."""
+        filas = {f["fecha"]: f for f in filas_csv()}
+        for fecha in ("2026-08-28", "2026-08-29", "2026-08-30"):
+            self.assertNotIn("Rodrigo", nombres_asignados_dia(filas[fecha]), fecha)
+
     def test_detecta_racha_de_5_dias(self) -> None:
         self.assertEqual(max_racha_dias([0, 1, 2, 3, 4]), 5)
 
