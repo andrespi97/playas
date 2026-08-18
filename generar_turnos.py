@@ -34,6 +34,7 @@ from turnos_common import (
     parse_lista_nombres,
     sin_vacantes_roster,
     solo_nombre,
+    es_nombre_vacante,
     _en_puesto_chapela,
 )
 
@@ -152,6 +153,12 @@ def validar_config(cfg: dict) -> list[str]:
         if not nombre_cfg:
             errores.append(f"disponibilidad: nombre desconocido «{clave}»")
             continue
+        if isinstance(datos, dict):
+            for fecha in datos.get("excepto") or []:
+                try:
+                    parse_fecha(fecha)
+                except ValueError:
+                    errores.append(f"disponibilidad.{clave}: fecha inválida en excepto «{fecha}»")
         if isinstance(datos, dict) and (
             datos.get("fines_de_semana") or datos.get("laborables")
         ):
@@ -260,6 +267,31 @@ def elegir_fijo_por_bloque(
     return elegir_preferido(candidatos, roster, excluidos)
 
 
+def hay_patron_cesantes(fila: dict[str, str]) -> bool:
+    """Hay patrón real en Cesantes (no vacío ni vacante). Sin él no se abre Zodiac."""
+    nombre = fila.get("patron_cesantes", "").strip()
+    return bool(nombre) and not es_nombre_vacante(nombre)
+
+
+def reubicar_zodiac_sin_patron(fila: dict[str, str]) -> None:
+    """Si no hay patrón Cesantes, Zodiac no abre: esa persona pasa a torre o Cesantes."""
+    actual = fila.get("socorrista_zodiac", "").strip()
+    if not actual:
+        return
+    fila["socorrista_zodiac"] = ""
+    if not fila.get("abrir_torre", "").strip():
+        fila["abrir_torre"] = actual
+        return
+    cesantes = parse_lista_nombres(fila.get("cesantes", ""))
+    for i, n in enumerate(cesantes):
+        if es_nombre_vacante(n):
+            cesantes[i] = actual
+            fila["cesantes"] = format_lista_nombres(cesantes)
+            return
+    cesantes.append(actual)
+    fila["cesantes"] = format_lista_nombres(cesantes)
+
+
 def elegir_menos_asignado(
     candidatos: list[Persona],
     roster: list[str],
@@ -306,6 +338,19 @@ def colocar_socorrista_zodiac(fila: dict[str, str], nuevo: str, no_abrir: set[st
     return False
 
 
+def _prioridad_swap_zodiac(fila: dict[str, str], nombre: str) -> int:
+    """Prefiere no mover abrir puesto: titular Zodiac, torre, cesantes, llave."""
+    if fila.get("socorrista_zodiac", "").strip() == nombre:
+        return 0
+    if fila.get("abrir_torre", "").strip() == nombre:
+        return 1
+    if nombre in parse_lista_nombres(fila.get("cesantes", "")):
+        return 2
+    if fila.get("llave_cesantes", "").strip() == nombre:
+        return 3
+    return 9
+
+
 def repartir_zodiac_desde(
     filas: list[dict[str, str]],
     pools: PoolsPreferencias,
@@ -319,6 +364,9 @@ def repartir_zodiac_desde(
     for fila in filas:
         if parse_fecha(fila["fecha"]) < desde:
             continue
+        if not hay_patron_cesantes(fila):
+            reubicar_zodiac_sin_patron(fila)
+            continue
         presentes = set(nombres_asignados_dia(fila))
         if presentes & abren:
             continue
@@ -329,7 +377,14 @@ def repartir_zodiac_desde(
         candidatos = [n for n in roster if n in presentes and n not in chapela]
         if not candidatos:
             continue
-        ordenados = sorted(candidatos, key=lambda n: (contador.get(n, 0), roster.index(n)))
+        ordenados = sorted(
+            candidatos,
+            key=lambda n: (
+                contador.get(n, 0),
+                _prioridad_swap_zodiac(fila, n),
+                roster.index(n),
+            ),
+        )
         for pick in ordenados:
             if colocar_socorrista_zodiac(fila, pick, no_abrir):
                 contador[pick] = contador.get(pick, 0) + 1
@@ -471,9 +526,11 @@ def _colocar_prioridad_invertida(
     llave_cesantes: Persona | None,
     socorrista_zodiac: Persona | None,
     abrir_torre: Persona | None,
+    *,
+    permitir_zodiac: bool = True,
 ) -> tuple[Persona | None, Persona | None, Persona | None]:
     """zodiac → torre → puesto (inverso del orden normal de asignación)."""
-    if not socorrista_zodiac:
+    if permitir_zodiac and not socorrista_zodiac:
         return llave_cesantes, persona, abrir_torre
     if not abrir_torre:
         return llave_cesantes, socorrista_zodiac, persona
@@ -543,12 +600,15 @@ def _fechas_disponibilidad_persona(cfg: dict, datos: dict | list) -> set[str]:
     periodo = cfg.get("periodo", {})
     inicio = parse_fecha(periodo["inicio"])
     fin = parse_fecha(periodo["fin"])
+    excepto: set[str] = set()
+    if isinstance(datos, dict):
+        excepto = {parse_fecha(f).isoformat() for f in (datos.get("excepto") or [])}
     if isinstance(datos, dict) and datos.get("fines_de_semana"):
-        return {d.isoformat() for d in rango_fechas(inicio, fin) if d.weekday() >= 5}
+        return {d.isoformat() for d in rango_fechas(inicio, fin) if d.weekday() >= 5} - excepto
     if isinstance(datos, dict) and datos.get("laborables"):
-        return {d.isoformat() for d in rango_fechas(inicio, fin) if d.weekday() < 5}
+        return {d.isoformat() for d in rango_fechas(inicio, fin) if d.weekday() < 5} - excepto
     fechas = datos.get("fechas", []) if isinstance(datos, dict) else datos
-    return {parse_fecha(f).isoformat() for f in fechas}
+    return {parse_fecha(f).isoformat() for f in fechas} - excepto
 
 
 def _nombres_disponibilidad_limitada(cfg: dict) -> set[str]:
@@ -762,7 +822,9 @@ def validar_no_patron(fila: dict[str, str], cfg: dict) -> str | None:
 
 
 def validar_abren_zodiac(fila: dict[str, str], cfg: dict) -> str | None:
-    """Si Arturo o Rober trabajan y no están en Chapela, deben abrir Zodiac."""
+    """Si Arturo o Rober trabajan y no están en Chapela, deben abrir Zodiac (si hay patrón)."""
+    if not hay_patron_cesantes(fila):
+        return None
     abren = [
         solo_nombre(n)
         for n in (cfg.get("preferencias") or {}).get("abren_zodiac", [])
@@ -784,8 +846,10 @@ def validar_abren_zodiac(fila: dict[str, str], cfg: dict) -> str | None:
 
 def validar_cobertura_extendida(fila: dict[str, str], socorristas_trabajando: int) -> str | None:
     """Zodiac y torre cuando hay personal suficiente ese día."""
+    if fila.get("socorrista_zodiac", "").strip() and not hay_patron_cesantes(fila):
+        return "Zodiac sin patrón Cesantes"
     libres = socorristas_trabajando - 1  # excluye socorrista chapela
-    if libres >= 1 and not fila.get("socorrista_zodiac", "").strip():
+    if hay_patron_cesantes(fila) and libres >= 1 and not fila.get("socorrista_zodiac", "").strip():
         return "Falta zodiac"
     if libres >= 3 and not fila.get("abrir_torre", "").strip():
         return "Falta torre"
@@ -1063,17 +1127,19 @@ def asignar_puestos(
 
     excluidos: set[str] = {socorrista_chapela.nombre}
     invertida = pools.prioridad_invertida
+    abre_zodiac = patron_cesantes is not None and not es_vacante(patron_cesantes)
 
-    # 1. Zodiac preferente: Arturo / Rober / Robinson si están (Robinson no si ya está en Chapela)
+    # 1. Zodiac preferente: Arturo / Rober si están de turno (solo si hay patrón Cesantes)
     socorrista_zodiac: Persona | None = None
-    for nombre in pools.abren_zodiac:
-        if _nombre_en_conjunto(nombre, excluidos):
-            continue
-        if p := buscar_por_nombre(soc_confirmados, nombre):
-            socorrista_zodiac = p
-            break
-    if socorrista_zodiac:
-        excluidos.add(socorrista_zodiac.nombre)
+    if abre_zodiac:
+        for nombre in pools.abren_zodiac:
+            if _nombre_en_conjunto(nombre, excluidos):
+                continue
+            if p := buscar_por_nombre(soc_confirmados, nombre):
+                socorrista_zodiac = p
+                break
+        if socorrista_zodiac:
+            excluidos.add(socorrista_zodiac.nombre)
 
     # 2. Abrir puesto: primero quien no prefiere zodiac ni tiene prioridad invertida
     pool_llave = _pool_abrir_puesto(pools.pool_llave_g2 + pools.pool_llave_g3, pools.prefieren_zodiac)
@@ -1128,7 +1194,7 @@ def asignar_puestos(
         excluidos.add(llave_cesantes.nombre)
 
     # 3. Zodiac de reserva: reparte Robinson / Alejandro / Sergio / Rodrigo / Claudio
-    if not socorrista_zodiac:
+    if abre_zodiac and not socorrista_zodiac:
         roster_z = pools.pref_zodiac or pools.pref_zodiac_reserva
         candidatos_pref = _sin_prioridad_invertida(
             [
@@ -1163,7 +1229,7 @@ def asignar_puestos(
     # 5. Prioridad invertida: zodiac → torre → puesto (último hueco libre)
     for persona in [s for s in soc_confirmados if s.nombre in invertida and s.nombre not in excluidos]:
         llave_cesantes, socorrista_zodiac, abrir_torre = _colocar_prioridad_invertida(
-            persona, llave_cesantes, socorrista_zodiac, abrir_torre
+            persona, llave_cesantes, socorrista_zodiac, abrir_torre, permitir_zodiac=abre_zodiac
         )
         if _persona_en_puesto(persona, llave_cesantes, socorrista_zodiac, abrir_torre):
             excluidos.add(persona.nombre)
@@ -1184,7 +1250,7 @@ def asignar_puestos(
 
     libres = len(soc_confirmados) - 1
     faltan: list[str] = []
-    if libres >= 1 and not socorrista_zodiac:
+    if abre_zodiac and libres >= 1 and not socorrista_zodiac:
         faltan.append("zodiac")
     if not llave_cesantes:
         faltan.append("abrir puesto")
@@ -1343,7 +1409,7 @@ def generar_csv(
             fila = normalizar_fila_csv({"fecha": fecha_str, **asignacion, **admin})
 
         filas.append(fila)
-        if fecha >= EQUILIBRIO_ZODIAC_DESDE:
+        if fecha >= EQUILIBRIO_ZODIAC_DESDE and hay_patron_cesantes(fila):
             z = solo_nombre(fila.get("socorrista_zodiac", ""))
             if z in roster_zodiac:
                 zodiac_hechos[z] = zodiac_hechos.get(z, 0) + 1

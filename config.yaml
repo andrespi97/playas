@@ -104,6 +104,8 @@ disponibilidad:
       - "2026-08-31"
   Anxo:
     fines_de_semana: true
+    excepto:
+      - "2026-08-22"
   # Raúl:
   #   laborables: true
 

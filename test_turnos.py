@@ -15,13 +15,16 @@ sys.path.insert(0, str(ROOT))
 from datetime import date
 
 from generar_turnos import (  # noqa: E402
+    EQUILIBRIO_ZODIAC_DESDE,
     ErrorGeneracion,
     ausentes_por_disponibilidad,
     cargar_config_validada,
     construir_personas,
     contar_socorristas_trabajando,
     generar_csv,
+    hay_patron_cesantes,
     max_racha_dias,
+    reubicar_zodiac_sin_patron,
     nombres_asignados_fila,
     nombres_completos_ausentes,
     nombres_refuerzo_disponibilidad,
@@ -118,6 +121,7 @@ class TestCoberturaObligatoria(unittest.TestCase):
 class TestCoberturaExtendida(unittest.TestCase):
     def test_csv_zodiac_y_torre_cuando_hay_personal(self) -> None:
         cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
         personas = construir_personas(cfg)
         rot = cfg["rotacion"]
         inicio = parse_fecha(cfg["periodo"]["inicio"])
@@ -131,6 +135,8 @@ class TestCoberturaExtendida(unittest.TestCase):
             )
             n = contar_socorristas_trabajando(personas, dia_idx, rot, ausentes, cfg, fecha_str)
             err = validar_cobertura_extendida(fila, n)
+            if err == "Zodiac sin patrón Cesantes" and parse_fecha(fecha_str) < EQUILIBRIO_ZODIAC_DESDE:
+                continue
             self.assertIsNone(err, f"{fecha_str} ({n} socorristas): {err}")
 
     def test_detecta_falta_torre_con_personal(self) -> None:
@@ -138,6 +144,7 @@ class TestCoberturaExtendida(unittest.TestCase):
             validar_cobertura_extendida(
                 {
                     "socorrista_chapela": "Robinson",
+                    "patron_cesantes": "Adrián",
                     "llave_cesantes": "Sergio",
                     "socorrista_zodiac": "Claudio",
                     "abrir_torre": "",
@@ -145,6 +152,33 @@ class TestCoberturaExtendida(unittest.TestCase):
                 4,
             ),
             "Falta torre",
+        )
+
+    def test_detecta_zodiac_sin_patron_cesantes(self) -> None:
+        self.assertEqual(
+            validar_cobertura_extendida(
+                {
+                    "socorrista_chapela": "Robinson",
+                    "patron_cesantes": "Vacante 3",
+                    "llave_cesantes": "Sergio",
+                    "socorrista_zodiac": "Claudio",
+                    "abrir_torre": "Alejandro",
+                },
+                4,
+            ),
+            "Zodiac sin patrón Cesantes",
+        )
+        self.assertIsNone(
+            validar_cobertura_extendida(
+                {
+                    "socorrista_chapela": "Robinson",
+                    "patron_cesantes": "Vacante 3",
+                    "llave_cesantes": "Sergio",
+                    "socorrista_zodiac": "",
+                    "abrir_torre": "Alejandro",
+                },
+                4,
+            )
         )
 
 
@@ -372,11 +406,18 @@ class TestSustitutos(unittest.TestCase):
                 continue
             presentes = set(nombres_asignados_dia(fila))
             if presentes & abren:
-                self.assertIn(
-                    fila.get("socorrista_zodiac"),
-                    abren,
-                    f"{fila['fecha']}: Zodiac debe ser Arturo o Rober",
-                )
+                if hay_patron_cesantes(fila):
+                    self.assertIn(
+                        fila.get("socorrista_zodiac"),
+                        abren,
+                        f"{fila['fecha']}: Zodiac debe ser Arturo o Rober",
+                    )
+                else:
+                    self.assertNotIn(
+                        fila.get("socorrista_zodiac"),
+                        abren,
+                        f"{fila['fecha']}: sin patrón Cesantes no se abre Zodiac",
+                    )
             self.assertIsNone(validar_abren_zodiac(fila, cfg), fila["fecha"])
 
     def test_robinson_no_abre_zodiac_si_esta_en_chapela(self) -> None:
@@ -421,18 +462,18 @@ class TestSustitutos(unittest.TestCase):
         cfg = cargar_config_validada()
         self.assertIsNone(
             validar_abren_zodiac(
-                {"socorrista_zodiac": "Rober", "cesantes": "Aaron"},
+                {"socorrista_zodiac": "Rober", "patron_cesantes": "Adrián", "cesantes": "Aaron"},
                 cfg,
             )
         )
         self.assertIsNone(
             validar_abren_zodiac(
-                {"socorrista_zodiac": "Claudio", "cesantes": "Aaron"},
+                {"socorrista_zodiac": "Claudio", "patron_cesantes": "Adrián", "cesantes": "Aaron"},
                 cfg,
             )
         )
         err = validar_abren_zodiac(
-            {"socorrista_zodiac": "Claudio", "cesantes": "Arturo"},
+            {"socorrista_zodiac": "Claudio", "patron_cesantes": "Adrián", "cesantes": "Arturo"},
             cfg,
         )
         self.assertIsNotNone(err)
@@ -441,6 +482,7 @@ class TestSustitutos(unittest.TestCase):
             validar_abren_zodiac(
                 {
                     "socorrista_chapela": "Robinson",
+                    "patron_cesantes": "Adrián",
                     "socorrista_zodiac": "Claudio",
                     "cesantes": "Aaron",
                 },
@@ -449,10 +491,28 @@ class TestSustitutos(unittest.TestCase):
         )
         self.assertIsNone(
             validar_abren_zodiac(
-                {"socorrista_zodiac": "Claudio", "cesantes": "Robinson"},
+                {"socorrista_zodiac": "Claudio", "patron_cesantes": "Adrián", "cesantes": "Robinson"},
                 cfg,
             )
         )
+        self.assertIsNone(
+            validar_abren_zodiac(
+                {
+                    "socorrista_zodiac": "Claudio",
+                    "patron_cesantes": "Vacante 3",
+                    "cesantes": "Arturo",
+                },
+                cfg,
+            )
+        )
+
+    def test_anxo_no_el_sabado_22_agosto(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        sabado = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-08-22")
+        self.assertNotIn("Anxo", nombres_asignados_dia(sabado), "Anxo no debe trabajar el 22 ago")
+        domingo = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-08-23")
+        self.assertIn("Anxo", nombres_asignados_dia(domingo), "Anxo sigue los demás fines de semana")
 
     def test_rober_en_dias_disponibilidad_agosto(self) -> None:
         cfg = cargar_config_validada()
@@ -471,7 +531,44 @@ class TestSustitutos(unittest.TestCase):
             self.assertIn("Rober", sustitutos_presentes_fila(fila, sustitutos), f"Rober ausente el {fecha}")
             if celda_bloqueada(fila.get("bloqueado", "")):
                 continue
-            self.assertEqual(fila.get("socorrista_zodiac"), "Rober", fecha)
+            if hay_patron_cesantes(fila):
+                self.assertEqual(fila.get("socorrista_zodiac"), "Rober", fecha)
+            else:
+                self.assertNotEqual(fila.get("socorrista_zodiac"), "Rober", fecha)
+
+    def test_sin_patron_cesantes_no_abre_zodiac_desde_equilibrio(self) -> None:
+        """Sin patrón Cesantes (vacante o vacío) no hay Zodiac a partir del 18 ago."""
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        for fila in cargar_filas_csv():
+            if parse_fecha(fila["fecha"]) < date(2026, 8, 18):
+                continue
+            if hay_patron_cesantes(fila):
+                continue
+            self.assertFalse(
+                (fila.get("socorrista_zodiac") or "").strip(),
+                f"{fila['fecha']}: Zodiac sin patrón Cesantes «{fila.get('patron_cesantes')}»",
+            )
+
+    def test_reubicar_zodiac_sin_patron(self) -> None:
+        fila = {
+            "socorrista_zodiac": "Claudio",
+            "abrir_torre": "",
+            "cesantes": "Vacante 2",
+        }
+        reubicar_zodiac_sin_patron(fila)
+        self.assertEqual(fila["socorrista_zodiac"], "")
+        self.assertEqual(fila["abrir_torre"], "Claudio")
+
+        fila = {
+            "socorrista_zodiac": "Rober",
+            "abrir_torre": "Sergio",
+            "cesantes": "Vacante 2; Anxo",
+        }
+        reubicar_zodiac_sin_patron(fila)
+        self.assertEqual(fila["socorrista_zodiac"], "")
+        self.assertEqual(fila["abrir_torre"], "Sergio")
+        self.assertEqual(fila["cesantes"], "Anxo; Rober")
 
     def test_refuerzos_nunca_patron(self) -> None:
         from generar_vista import puestos_dia
