@@ -284,6 +284,12 @@ class TestRotacion4x2(unittest.TestCase):
         self.assertIn("Rodrigo", nombres_asignados_dia(filas["2026-08-26"]))
         self.assertNotIn("Rodrigo", parse_horas_extras(filas["2026-08-26"].get("horas_extras", "")))
 
+    def test_rodrigo_viernes_21_ago(self) -> None:
+        """Viernes 21 (libranza G3) a cambio del viernes 28."""
+        filas = {f["fecha"]: f for f in filas_csv()}
+        self.assertIn("Rodrigo", nombres_asignados_dia(filas["2026-08-21"]))
+        self.assertNotIn("Rodrigo", parse_horas_extras(filas["2026-08-21"].get("horas_extras", "")))
+
     def test_rodrigo_no_fin_de_agosto(self) -> None:
         """Rodrigo no trabaja el 28–30 ago (vie–dom)."""
         filas = {f["fecha"]: f for f in filas_csv()}
