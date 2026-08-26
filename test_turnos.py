@@ -54,7 +54,12 @@ from turnos_common import (  # noqa: E402
     nombres_en_cesantes,
     parse_fecha,
     parse_horas_extras,
+    parse_horas_compensadas,
+    parse_anotaciones_horas,
     parse_lista_nombres,
+    parse_compensacion,
+    saldos_compensacion,
+    errores_saldos_compensacion,
     solo_nombre,
     sustitutos_presentes_fila,
 )
@@ -130,7 +135,9 @@ class TestCoberturaExtendida(unittest.TestCase):
             if celda_bloqueada(fila.get("bloqueado", "")):
                 continue
             fecha_str = fila["fecha"]
-            ausentes = nombres_completos_ausentes(fila.get("vacaciones", ""), personas) | ausentes_por_disponibilidad(
+            ausentes = nombres_completos_ausentes(
+                fila.get("vacaciones", ""), personas, fila.get("horas_extras", "")
+            ) | ausentes_por_disponibilidad(
                 cfg, fecha_str, personas
             )
             n = contar_socorristas_trabajando(personas, dia_idx, rot, ausentes, cfg, fecha_str)
@@ -530,13 +537,13 @@ class TestSustitutos(unittest.TestCase):
             )
         )
 
-    def test_anxo_no_el_sabado_22_agosto(self) -> None:
+    def test_anxo_no_el_fin_de_semana_22_23_agosto(self) -> None:
         cfg = cargar_config_validada()
         generar_csv(cfg, congelar=False)
-        sabado = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-08-22")
-        self.assertNotIn("Anxo", nombres_asignados_dia(sabado), "Anxo no debe trabajar el 22 ago")
-        domingo = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-08-23")
-        self.assertIn("Anxo", nombres_asignados_dia(domingo), "Anxo sigue los demás fines de semana")
+        filas = {f["fecha"]: f for f in cargar_filas_csv()}
+        self.assertNotIn("Anxo", nombres_asignados_dia(filas["2026-08-22"]), "Anxo no debe trabajar el 22 ago")
+        self.assertNotIn("Anxo", nombres_asignados_dia(filas["2026-08-23"]), "Anxo no debe trabajar el 23 ago")
+        self.assertIn("Anxo", nombres_asignados_dia(filas["2026-08-16"]), "Anxo sigue los demás fines de semana")
 
     def test_rober_en_dias_disponibilidad_agosto(self) -> None:
         cfg = cargar_config_validada()
@@ -848,6 +855,58 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(parse_lista_nombres("Esther; Fernando"), ["Esther", "Fernando"])
         self.assertEqual(parse_horas_extras("Esther:4; Adrián:6.5"), {"Esther": 4.0, "Adrián": 6.5})
 
+    def test_parse_horas_compensadas(self) -> None:
+        extras, compensado = parse_anotaciones_horas(
+            "Alejandro:8; Claudio:8:compensado; Fernando:8"
+        )
+        self.assertEqual(extras, {"Alejandro": 8.0, "Fernando": 8.0})
+        self.assertEqual(compensado, {"Claudio": 8.0})
+        self.assertEqual(parse_horas_extras("Claudio:8:compensado"), {})
+        self.assertEqual(parse_horas_compensadas("Claudio:8:compensado"), {"Claudio": 8.0})
+        self.assertEqual(parse_horas_compensadas("Claudio:8:Compensado"), {"Claudio": 8.0})
+        with self.assertRaises(ValueError):
+            parse_anotaciones_horas("Claudio:8:otro")
+
+    def test_saldos_compensacion_credito_1_5(self) -> None:
+        cfg = cargar_config()
+        factor, personas = parse_compensacion(cfg)
+        self.assertEqual(factor, 1.5)
+        self.assertEqual(personas, frozenset({"Alejandro", "Claudio"}))
+        saldos = {s["nombre"]: s for s in saldos_compensacion(cfg, cargar_filas_csv())}
+        self.assertEqual(saldos["Alejandro"]["pendientes"], 8.0)
+        self.assertEqual(saldos["Alejandro"]["credito"], 12.0)
+        self.assertEqual(saldos["Alejandro"]["gastado"], 0.0)
+        self.assertEqual(saldos["Alejandro"]["restante"], 12.0)
+        self.assertEqual(saldos["Claudio"]["credito"], 12.0)
+        self.assertNotIn("Fernando", saldos)
+
+    def test_saldos_compensacion_descuenta_csv(self) -> None:
+        cfg = cargar_config()
+        filas = [
+            {"horas_extras": "Alejandro:8:compensado"},
+            {"horas_extras": "Claudio:4:compensado; Fernando:8"},
+        ]
+        saldos = {s["nombre"]: s for s in saldos_compensacion(cfg, filas)}
+        self.assertEqual(saldos["Alejandro"]["gastado"], 8.0)
+        self.assertEqual(saldos["Alejandro"]["restante"], 4.0)
+        self.assertEqual(saldos["Claudio"]["gastado"], 4.0)
+        self.assertEqual(saldos["Claudio"]["restante"], 8.0)
+        self.assertEqual(errores_saldos_compensacion(cfg, filas), [])
+        filas_deuda = [{"horas_extras": "Alejandro:16:compensado"}]
+        errores = errores_saldos_compensacion(cfg, filas_deuda)
+        self.assertEqual(len(errores), 1)
+        self.assertIn("Alejandro", errores[0])
+
+    def test_contar_horas_no_suma_compensado_como_extra(self) -> None:
+        fila = {
+            "socorrista_chapela": "Fernando",
+            "horas_extras": "Alejandro:8:compensado; Claudio:8",
+        }
+        horas = contar_horas_fila(fila)
+        self.assertNotIn("Alejandro", horas)
+        self.assertEqual(horas["Claudio"]["horas_extras"], 8.0)
+        self.assertEqual(horas["Fernando"]["horas_turno"], 8.0)
+
     def test_contar_horas_fila_turno_y_extras(self) -> None:
         # Día ordinario: asignado sin extras → 8 h turno
         ordinario = contar_horas_fila(
@@ -1091,6 +1150,13 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertIn("Pendientes de pagar", html)
         self.assertIn("Fernando", html)
         self.assertIn("16 h", html)
+        self.assertIn('id="compensacion-dias"', html)
+        self.assertIn("Compensación", html)
+        self.assertIn("24 h restantes", html)
+        self.assertIn("Nombre:8:compensado", html)
+        self.assertIn("Pendientes de pagar no se descuenta", html)
+        self.assertIn("div.extras", html)
+        self.assertNotIn("\n    .extras {", html)
         self.assertIn('class="ces-n"', html)
         # 11 ago: Sergio + Robinson (zodiac) + Rodrigo (torre); Rober/Aaron desde el 13
         self.assertRegex(html, r'data-fecha="2026-08-11"[^>]*data-cesantes="3"')
@@ -1133,6 +1199,8 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertNotIn("recuento-extras", html)
         self.assertNotIn("pendientes-pagar", html)
         self.assertNotIn("Pendientes de pagar", html)
+        self.assertNotIn("compensacion-dias", html)
+        self.assertNotIn("24 h restantes", html)
         self.assertIn("const EXTRAS = {}", html)
         # Sin horas de extras en el DOM (bloques vacíos / JSON vacío)
         self.assertNotIn('class="extra"', html)
@@ -1142,6 +1210,16 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         # El cuadrante de puestos sí está
         self.assertIn("Soc. Chapela", html)
         self.assertIn("Robinson", html)
+
+    def test_html_badge_compensado(self) -> None:
+        from generar_vista import render_compensado
+
+        html = render_compensado("Alejandro", 8.0)
+        self.assertIn('class="compensado"', html)
+        self.assertIn("Compensado", html)
+        self.assertIn("Alejandro", html)
+        self.assertIn("8 h", html)
+        self.assertNotIn("data-horas=", html)
 
     def test_vacaciones_solo_manuales(self) -> None:
         cfg = cargar_config_validada()
@@ -1215,6 +1293,65 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         }
         err = validar_administracion(fila, personas)
         self.assertIn("vacaciones", err or "")
+
+    def test_compensado_cuenta_como_ausente(self) -> None:
+        cfg = cargar_config_validada()
+        personas = construir_personas(cfg)
+        ausentes = nombres_completos_ausentes("", personas, "Alejandro:8:compensado")
+        self.assertIn("Alejandro Panadeiros Covelo", ausentes)
+
+    def test_detecta_compensado_y_asignacion(self) -> None:
+        cfg = cargar_config_validada()
+        personas = construir_personas(cfg)
+        fila = {
+            "fecha": "2026-07-09",
+            "socorrista_chapela": "Alejandro",
+            "patron_chapela": "Adrián",
+            "llave_cesantes": "Sergio",
+            "horas_extras": "Alejandro:8:compensado",
+        }
+        err = validar_administracion(fila, personas, cfg)
+        self.assertIn("compensación", err or "")
+
+    def test_compensado_solo_alex_claudio(self) -> None:
+        cfg = cargar_config_validada()
+        personas = construir_personas(cfg)
+        fila = {
+            "fecha": "2026-07-09",
+            "socorrista_chapela": "Robinson",
+            "patron_chapela": "Adrián",
+            "llave_cesantes": "Sergio",
+            "horas_extras": "Fernando:8:compensado",
+        }
+        err = validar_administracion(fila, personas, cfg)
+        self.assertIn("no puede marcar compensado", err or "")
+
+    def test_compensado_excluye_de_generacion(self) -> None:
+        cfg = cargar_config_validada()
+        generar_csv(cfg, congelar=False)
+        filas = cargar_filas_csv()
+        for fila in filas:
+            if fila["fecha"] == "2026-07-07":
+                extras = fila.get("horas_extras", "").strip()
+                marca = "Alejandro:8:compensado"
+                fila["horas_extras"] = f"{extras}; {marca}" if extras else marca
+                fila["bloqueado"] = ""
+                break
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as f:
+            import csv
+
+            writer = csv.DictWriter(f, fieldnames=filas[0].keys())
+            writer.writeheader()
+            writer.writerows(filas)
+        generar_csv(cfg, congelar=False)
+        fila = next(f for f in cargar_filas_csv() if f["fecha"] == "2026-07-07")
+        asignados = {
+            fila.get(c, "")
+            for c in fila
+            if c not in ("fecha", "vacaciones", "horas_extras", "llave_chapela") and fila.get(c)
+        }
+        self.assertNotIn("Alejandro", asignados)
+        self.assertIn("Alejandro:8:compensado", fila.get("horas_extras", ""))
 
     def test_horas_extras_permite_socorrista_en_dia_libre(self) -> None:
         cfg = cargar_config_validada()

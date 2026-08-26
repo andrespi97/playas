@@ -31,7 +31,11 @@ from turnos_common import (
     normalizar_fila_csv,
     parse_fecha,
     parse_horas_extras,
+    parse_horas_compensadas,
+    parse_anotaciones_horas,
+    parse_compensacion,
     parse_lista_nombres,
+    errores_saldos_compensacion,
     sin_vacantes_roster,
     solo_nombre,
     es_nombre_vacante,
@@ -206,6 +210,24 @@ def validar_config(cfg: dict) -> list[str]:
             parse_fecha(hasta)
         except ValueError:
             errores.append("congelado.hasta inválida (use YYYY-MM-DD)")
+
+    comp = cfg.get("compensacion") or {}
+    if comp:
+        if not isinstance(comp, dict):
+            errores.append("compensacion: formato inválido")
+        else:
+            if "factor" in comp:
+                try:
+                    if float(comp["factor"]) <= 0:
+                        errores.append("compensacion.factor debe ser > 0")
+                except (TypeError, ValueError):
+                    errores.append("compensacion.factor inválido")
+            for nombre in comp.get("personas") or []:
+                sn = solo_nombre(str(nombre).strip())
+                if not sn:
+                    continue
+                if sn not in indice_pila and str(nombre).strip() not in nombres_registrados:
+                    errores.append(f"compensacion.personas: nombre desconocido «{nombre}»")
 
     return errores
 
@@ -580,11 +602,20 @@ def confirmados(candidatos: list[Persona]) -> list[Persona]:
     return [p for p in candidatos if not es_vacante(p)]
 
 
-def nombres_completos_ausentes(vacaciones_csv: str, personas: list[Persona]) -> set[str]:
+def nombres_completos_ausentes(
+    vacaciones_csv: str,
+    personas: list[Persona],
+    horas_extras_csv: str = "",
+) -> set[str]:
     indice = indice_por_nombre_pila(personas)
+    nombres = set(parse_lista_nombres(vacaciones_csv))
+    try:
+        nombres.update(parse_horas_compensadas(horas_extras_csv))
+    except ValueError:
+        pass
     return {
         indice[n].nombre
-        for n in parse_lista_nombres(vacaciones_csv)
+        for n in nombres
         if n in indice
     }
 
@@ -728,11 +759,15 @@ def admin_desde_existente(existentes: dict[str, dict[str, str]], fecha_str: str)
     return {col: prev.get(col, "") for col in COLUMNAS_ADMIN}
 
 
-def validar_administracion(fila: dict[str, str], personas: list[Persona]) -> str | None:
+def validar_administracion(
+    fila: dict[str, str],
+    personas: list[Persona],
+    cfg: dict | None = None,
+) -> str | None:
     indice = indice_por_nombre_pila(personas)
     vacaciones = parse_lista_nombres(fila.get("vacaciones", ""))
     try:
-        extras = parse_horas_extras(fila.get("horas_extras", ""))
+        extras, compensado = parse_anotaciones_horas(fila.get("horas_extras", ""))
     except ValueError as e:
         return str(e)
 
@@ -744,14 +779,32 @@ def validar_administracion(fila: dict[str, str], personas: list[Persona]) -> str
             return f"Horas extras: nombre desconocido «{nombre}»"
         if horas <= 0:
             return f"Horas extras: «{nombre}» debe ser > 0"
+    for nombre, horas in compensado.items():
+        if nombre not in indice:
+            return f"Horas extras: nombre desconocido «{nombre}»"
+        if horas <= 0:
+            return f"Horas extras: «{nombre}» debe ser > 0"
+
+    if cfg is not None:
+        _, permitidos = parse_compensacion(cfg)
+        for nombre in compensado:
+            if nombre not in permitidos:
+                return f"Horas extras: «{nombre}» no puede marcar compensado"
 
     asignados = nombres_asignados_fila(fila)
     for nombre in vacaciones:
         if nombre in asignados:
             return f"{nombre} en vacaciones y asignado el mismo día"
+    for nombre in compensado:
+        if nombre in asignados:
+            return f"{nombre} en compensación y asignado el mismo día"
 
     if solapados := set(vacaciones) & set(extras):
         return f"{sorted(solapados)[0]} en vacaciones y horas extras"
+    if solapados := set(vacaciones) & set(compensado):
+        return f"{sorted(solapados)[0]} en vacaciones y compensación"
+    if solapados := set(extras) & set(compensado):
+        return f"{sorted(solapados)[0]} en horas extras y compensación"
 
     return None
 
@@ -1356,7 +1409,9 @@ def generar_csv(
     for dia_idx, fecha in enumerate(fechas):
         fecha_str = fecha.isoformat()
         admin = admin_desde_existente(existentes, fecha_str)
-        ausentes = nombres_completos_ausentes(admin["vacaciones"], personas) | ausentes_por_disponibilidad(
+        ausentes = nombres_completos_ausentes(
+            admin["vacaciones"], personas, admin.get("horas_extras", "")
+        ) | ausentes_por_disponibilidad(
             cfg, fecha_str, personas
         )
 
@@ -1449,7 +1504,7 @@ def generar_csv(
 
         if dup := validar_sin_duplicados(fila):
             errores.append(f"{prefijo}: {dup}")
-        elif adm := validar_administracion(fila, personas):
+        elif adm := validar_administracion(fila, personas, cfg):
             errores.append(f"{prefijo}: {adm}")
         elif zod := validar_zodiac_solo_socorrista(fila, personas):
             errores.append(f"{prefijo}: {zod}")
@@ -1463,7 +1518,9 @@ def generar_csv(
             if cob := validar_cobertura_obligatoria(fila):
                 errores.append(f"{prefijo}: {cob}")
 
-            ausentes = nombres_completos_ausentes(fila.get("vacaciones", ""), personas) | ausentes_por_disponibilidad(
+            ausentes = nombres_completos_ausentes(
+                fila.get("vacaciones", ""), personas, fila.get("horas_extras", "")
+            ) | ausentes_por_disponibilidad(
                 cfg, fecha_str, personas
             )
             n_soc = contar_socorristas_trabajando(
@@ -1471,6 +1528,8 @@ def generar_csv(
             )
             if ext := validar_cobertura_extendida(fila, n_soc):
                 errores.append(f"{prefijo}: {ext}")
+
+    errores.extend(errores_saldos_compensacion(cfg, filas))
 
     if errores:
         raise ErrorGeneracion(errores)

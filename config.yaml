@@ -14,13 +14,22 @@ periodo:
 # Columnas admin (mismo CSV):
 #   cesantes     — refuerzos: Vacante 2; Esther (varios con ;)
 #   vacaciones   — nombres separados por ; (solo manual, el generador no la rellena)
-#   horas_extras — Nombre:horas; Nombre:horas (solo manual; checkbox «Mostrar horas extra» + tabla de recuento)
+#   horas_extras — Nombre:horas; Nombre:horas:compensado (solo manual)
+#                  :compensado = no viene; gasta crédito de compensación (×1,5)
 #   bloqueado    — 1 o x: la fila no se toca jamás al regenerar
 # Horas extras aún no pagadas (editar a mano; se muestra en el cuadrante, no en agosto público):
 horas_pendientes:
   Alejandro: 8
   Claudio: 8
   Fernando: 16
+
+# Alex y Claudio cobran extras en días libres (1 extra = 1,5 libres).
+# Pendientes de pagar no se descuenta: el CSV Nombre:8:compensado gasta el crédito.
+compensacion:
+  factor: 1.5
+  personas:
+    - Alejandro
+    - Claudio
 
 congelado:
   pasado_automatico: true
@@ -106,6 +115,7 @@ disponibilidad:
     fines_de_semana: true
     excepto:
       - "2026-08-22"
+      - "2026-08-23"
   # Raúl:
   #   laborables: true
 

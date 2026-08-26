@@ -11,7 +11,6 @@ from collections import defaultdict
 from generar_turnos import libran_por_fecha, nombres_plantilla
 from turnos_common import (
     CAMPOS_OCULTOS_HTML,
-    COLUMNAS_ADMIN,
     CONFIG_PATH,
     CSV_PATH,
     ETIQUETAS_VISTA,
@@ -26,9 +25,11 @@ from turnos_common import (
     etiqueta_periodo,
     es_nombre_vacante,
     parse_fecha,
-    parse_horas_extras,
+    parse_anotaciones_horas,
     parse_horas_pendientes,
+    parse_compensacion,
     parse_lista_nombres,
+    saldos_compensacion,
     publicar_html_github_pages,
     marcar_vacantes_cubiertas,
     cubridores_vacantes_fila,
@@ -163,14 +164,19 @@ def filas_por_mes(filas: list[dict[str, str]]) -> dict[tuple[int, int], list[dic
 
 
 def nombres_unicos(filas: list[dict[str, str]]) -> list[str]:
-    omitir = frozenset({"fecha", *COLUMNAS_ADMIN})
+    omitir = frozenset({"fecha", "bloqueado"})
     nombres: set[str] = set()
     for fila in filas:
         for k, v in fila.items():
             if k in omitir or not v.strip():
                 continue
             if k == "horas_extras":
-                nombres.update(parse_horas_extras(v).keys())
+                try:
+                    extras, compensado = parse_anotaciones_horas(v)
+                except ValueError:
+                    continue
+                nombres.update(extras)
+                nombres.update(compensado)
                 continue
             if k in ("vacaciones", "cesantes"):
                 nombres.update(parse_lista_nombres(v))
@@ -259,6 +265,16 @@ def render_extra(nombre: str, horas: float) -> str:
     )
 
 
+def render_compensado(nombre: str, horas: float) -> str:
+    horas_txt = f"{horas:g} h"
+    return (
+        f'<div class="compensado" data-persona="{html.escape(nombre)}">'
+        f'<span class="etiq">Compensado</span>'
+        f'<span class="nombre">{html.escape(nombre)}</span>'
+        f'<span class="horas">{html.escape(horas_txt)}</span></div>'
+    )
+
+
 def render_recuento_extras(
     personas: dict[str, dict[str, float | int]],
     *,
@@ -339,6 +355,43 @@ def render_horas_pendientes(pendientes: dict[str, float]) -> str:
     )
 
 
+def render_compensacion(
+    saldos: list[dict[str, float | str]],
+    factor: float,
+) -> str:
+    """Bloque de crédito ×factor, horas compensadas y restante (Alex / Claudio)."""
+    if not saldos:
+        return ""
+    total_restante = sum(float(s["restante"]) for s in saldos)
+    total_txt = formatear_horas(total_restante)
+    factor_txt = formatear_horas(factor).replace(".", ",")
+    filas = "".join(
+        "<tr>"
+        f'<td class="nombre">{html.escape(str(s["nombre"]))}</td>'
+        f'<td class="num extras">{html.escape(formatear_horas(float(s["credito"])))} h</td>'
+        f'<td class="num extras">{html.escape(formatear_horas(float(s["gastado"])))} h</td>'
+        f'<td class="num extras">{html.escape(formatear_horas(float(s["restante"])))} h</td>'
+        "</tr>"
+        for s in saldos
+    )
+    resumen = f"Compensación · {total_txt} h restantes"
+    return (
+        f'<details class="recuento-extras compensacion-dias" id="compensacion-dias">'
+        f"<summary>{html.escape(resumen)}</summary>"
+        f'<div class="tabla-wrap"><table class="tabla-extras">'
+        f"<thead><tr><th>Persona</th><th>Crédito</th><th>Compensado</th>"
+        f"<th>Restante</th></tr></thead>"
+        f"<tbody>{filas}</tbody>"
+        f"<tfoot><tr><td>Total restante</td><td></td><td></td>"
+        f'<td class="num extras">{html.escape(total_txt)} h</td></tr></tfoot>'
+        f"</table></div>"
+        f'<p class="nota-pendientes">1 día extra = {html.escape(factor_txt)} días libres. '
+        f"Pendientes de pagar no se descuenta. En el CSV: "
+        f"<code>Nombre:8:compensado</code>.</p>"
+        f"</details>"
+    )
+
+
 def generar_html(
     filas: list[dict[str, str]],
     titulo: str,
@@ -370,13 +423,16 @@ def generar_html(
     vacaciones_por_fecha = {
         fila["fecha"]: parse_lista_nombres(fila.get("vacaciones", "")) for fila in filas
     }
+    compensado_por_fecha: dict[str, dict[str, float]] = {}
     extras_por_fecha: dict[str, dict[str, float]] = {}
-    if not ocultar_extras:
-        for fila in filas:
-            try:
-                extras_por_fecha[fila["fecha"]] = parse_horas_extras(fila.get("horas_extras", ""))
-            except ValueError:
-                extras_por_fecha[fila["fecha"]] = {}
+    for fila in filas:
+        try:
+            extras, compensado = parse_anotaciones_horas(fila.get("horas_extras", ""))
+        except ValueError:
+            extras, compensado = {}, {}
+        compensado_por_fecha[fila["fecha"]] = compensado
+        if not ocultar_extras:
+            extras_por_fecha[fila["fecha"]] = extras
     horas_por_mes = (
         contar_horas_por_mes(filas, plantilla=plantilla_sin_vacantes)
         if not ocultar_extras
@@ -415,21 +471,29 @@ def generar_html(
             libres = [
                 n
                 for n in libran.get(fila["fecha"], [])
-                if n not in vacaciones_por_fecha[fila["fecha"]] and n not in asignados
+                if n not in vacaciones_por_fecha[fila["fecha"]]
+                and n not in asignados
+                and n not in compensado_por_fecha.get(fila["fecha"], {})
             ]
             vacaciones = vacaciones_por_fecha.get(fila["fecha"], [])
             extras = extras_por_fecha.get(fila["fecha"], {})
+            compensado = compensado_por_fecha.get(fila["fecha"], {})
             n_cesantes = contar_socorristas_cesantes(fila, sustitutos=sustitutos)
             data_personas = html.escape(json.dumps(personas, ensure_ascii=False))
             data_libres = html.escape(json.dumps(libres, ensure_ascii=False))
             data_vacaciones = html.escape(json.dumps(vacaciones, ensure_ascii=False))
             data_extras = html.escape(json.dumps(extras, ensure_ascii=False))
+            data_compensado = html.escape(json.dumps(compensado, ensure_ascii=False))
             lineas = "".join(render_puesto(p) for p in puestos)
             lineas_libres = "".join(render_libre(n) for n in libres)
             lineas_vac = "".join(render_vacaciones(n) for n in vacaciones)
             lineas_extra = "".join(
                 render_extra(n, h)
                 for n, h in sorted(extras.items(), key=lambda p: p[0].casefold())
+            )
+            lineas_comp = "".join(
+                render_compensado(n, h)
+                for n, h in sorted(compensado.items(), key=lambda p: p[0].casefold())
             )
             ces_txt = (
                 f'<span class="ces-n" title="{n_cesantes} en Cesantes">'
@@ -439,12 +503,14 @@ def generar_html(
                 f'<article class="dia" data-fecha="{fila["fecha"]}" '
                 f'data-cesantes="{n_cesantes}" '
                 f"data-personas='{data_personas}' data-libres='{data_libres}' "
-                f"data-vacaciones='{data_vacaciones}' data-extras='{data_extras}'>"
+                f"data-vacaciones='{data_vacaciones}' data-extras='{data_extras}' "
+                f"data-compensado='{data_compensado}'>"
                 f'<header class="dia-cab"><span class="num">{d.day}</span>'
                 f"{ces_txt}"
                 f'<span class="sem">{DIAS_SEM[d.weekday()]}</span></header>'
                 f'<div class="puestos">{lineas}</div>'
                 f'<div class="vacaciones">{lineas_vac}</div>'
+                f'<div class="compensaciones">{lineas_comp}</div>'
                 f'<div class="extras">{lineas_extra}</div>'
                 f'<div class="libres">{lineas_libres}</div></article>'
             )
@@ -478,9 +544,22 @@ def generar_html(
     css_recuento = ""
     css_pdf_recuento = ""
     bloque_pendientes = ""
+    bloque_compensacion = ""
+    saldos_js: dict[str, dict[str, float]] = {}
     if not ocultar_extras:
         pendientes = parse_horas_pendientes(cfg)
         bloque_pendientes = render_horas_pendientes(pendientes)
+        factor, _ = parse_compensacion(cfg)
+        saldos = saldos_compensacion(cfg, filas)
+        bloque_compensacion = render_compensacion(saldos, factor)
+        saldos_js = {
+            str(s["nombre"]): {
+                "credito": float(s["credito"]),
+                "gastado": float(s["gastado"]),
+                "restante": float(s["restante"]),
+            }
+            for s in saldos
+        }
         check_extras_html = """
       <label class="check-libres">
         <input type="checkbox" id="mostrar-extras">
@@ -518,6 +597,7 @@ def generar_html(
     }
     .recuento-extras[open] > summary::before { transform: rotate(90deg); }
     .recuento-extras.pendientes-pagar > summary::before { color: #b45309; }
+    .recuento-extras.compensacion-dias > summary::before { color: #0f766e; }
     .tabla-wrap { overflow-x: auto; }
     .tabla-extras {
       width: 100%; border-collapse: collapse; font-size: 0.92rem;
@@ -534,18 +614,24 @@ def generar_html(
     .pendientes-pagar .tabla-extras th {
       background: #ffedd5; color: #9a3412;
     }
+    .compensacion-dias .tabla-extras th {
+      background: #ccfbf1; color: #115e59;
+    }
     .tabla-extras td.num, .tabla-extras th:not(:first-child) { text-align: right; }
     .tabla-extras td.nombre { font-weight: 600; }
     .tabla-extras td.extras { color: #6d28d9; font-weight: 700; }
     .pendientes-pagar .tabla-extras td.extras { color: #c2410c; }
+    .compensacion-dias .tabla-extras td.extras { color: #0f766e; }
     .tabla-extras tbody tr:hover { background: #faf5ff; }
     .pendientes-pagar .tabla-extras tbody tr:hover { background: #fff7ed; }
+    .compensacion-dias .tabla-extras tbody tr:hover { background: #f0fdfa; }
     .tabla-extras tr.sin-extras { opacity: 0.4; }
     .tabla-extras tfoot td {
       background: #f8fafc; font-weight: 700; border-bottom: none; color: var(--mar);
     }
     .tabla-extras tfoot td.extras { color: #6d28d9; }
     .pendientes-pagar .tabla-extras tfoot td.extras { color: #c2410c; }
+    .compensacion-dias .tabla-extras tfoot td.extras { color: #0f766e; }
     .nota-pendientes {
       padding: 0.55rem 1rem 0.85rem;
       font-size: 0.8rem;
@@ -748,25 +834,29 @@ def generar_html(
     .libre .nombre {{ color: var(--muted); font-weight: 600; }}
     .libre.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; color: var(--texto); }}
     .libre.resaltado .nombre, .libre.resaltado .etiq {{ color: var(--texto); }}
-    .vacaciones {{
+    .vacaciones, .compensaciones {{
       display: flex; flex-direction: column; gap: 2px; margin-top: 0.25rem;
     }}
-    .extras {{
+    div.extras {{
       display: none; flex-direction: column; gap: 2px; margin-top: 0.25rem;
     }}
-    body.mostrar-extras .extras {{ display: flex; }}
-    .vacacion, .extra {{
+    body.mostrar-extras div.extras {{ display: flex; }}
+    .vacacion, .extra, .compensado {{
       font-size: 0.58rem; line-height: 1.25; padding: 2px 4px;
       border-radius: 4px; display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap;
     }}
     .vacacion {{ background: #fff7ed; border: 1px solid #fdba74; }}
     .vacacion .etiq {{ color: #c2410c; font-weight: 600; text-transform: uppercase; font-size: 0.9em; }}
     .vacacion .nombre {{ color: #9a3412; font-weight: 600; }}
+    .compensado {{ background: #f0fdfa; border: 1px solid #5eead4; }}
+    .compensado .etiq {{ color: #0f766e; font-weight: 600; text-transform: uppercase; font-size: 0.9em; }}
+    .compensado .nombre {{ color: #115e59; font-weight: 600; }}
+    .compensado .horas {{ color: #0f766e; font-weight: 700; margin-left: auto; font-size: 0.95em; }}
     .extra {{ background: #ede9fe; border: 1px solid #c4b5fd; }}
     .extra .etiq {{ color: #6d28d9; font-weight: 600; text-transform: uppercase; font-size: 0.9em; }}
     .extra .nombre {{ color: #5b21b6; font-weight: 600; }}
     .extra .horas {{ color: #6d28d9; font-weight: 700; margin-left: auto; font-size: 0.95em; }}
-    .vacacion.resaltado, .extra.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; }}
+    .vacacion.resaltado, .extra.resaltado, .compensado.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; }}
     .dia.libre-resaltado {{ border-color: #94a3b8; }}
     .leyenda {{
       display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;
@@ -848,7 +938,8 @@ def generar_html(
     .pdf-export .puestos,
     .pdf-export .libres,
     .pdf-export .vacaciones,
-    .pdf-export .extras {{
+    .pdf-export .compensaciones,
+    .pdf-export div.extras {{
       overflow: visible !important; flex: none !important;
       gap: 1px;
     }}
@@ -858,12 +949,13 @@ def generar_html(
     }}
     .pdf-export .libre,
     .pdf-export .vacacion,
+    .pdf-export .compensado,
     .pdf-export .extra {{
       font-size: 0.45rem; line-height: 1.12; padding: 1px 2px;
     }}
     .pdf-export .etiq-cubierta {{ font-size: 0.42rem; }}
     .pdf-export.mostrar-libres .libres {{ display: flex; }}
-    .pdf-export.mostrar-extras .extras {{ display: flex; }}
+    .pdf-export.mostrar-extras div.extras {{ display: flex; }}
     .pdf-pagina {{
       width: 1040px; background: #fff;
     }}
@@ -922,6 +1014,7 @@ def generar_html(
     </nav>
     <div id="mi-resumen" class="mi-resumen"></div>
     {bloque_pendientes}
+    {bloque_compensacion}
     {"".join(bloques_mes)}
     <div class="leyenda">
       <span><strong>Chapela</strong> · playa Chapela (verde) · 🔑 lleva llave</span>
@@ -933,6 +1026,7 @@ def generar_html(
       <span><strong>Vacante</strong> · hueco sin cubrir (rosa)</span>
       <span><strong>Cubierta</strong> · sustituto o extra (verde)</span>
       <span><strong>Vacaciones</strong> · no disponible (naranja)</span>
+      <span><strong>Compensado</strong> · días libres por extras (verde)</span>
       {leyenda_extra}<span><strong>Libre</strong> · descanso (rotación 4/2)</span>
     </div>
   </div>
@@ -944,6 +1038,8 @@ def generar_html(
     const LIBRAN = {json.dumps(libran, ensure_ascii=False)};
     const VACACIONES = {json.dumps(vacaciones_por_fecha, ensure_ascii=False)};
     const EXTRAS = {json.dumps(extras_por_fecha, ensure_ascii=False)};
+    const COMPENSADO = {json.dumps(compensado_por_fecha, ensure_ascii=False)};
+    const COMPENSACION = {json.dumps(saldos_js, ensure_ascii=False)};
 
     const tabs = document.querySelectorAll(".tab-mes");
     const meses = document.querySelectorAll(".mes");
@@ -1139,13 +1235,15 @@ def generar_html(
         const libres = JSON.parse(dia.dataset.libres || "[]");
         const vacaciones = JSON.parse(dia.dataset.vacaciones || "[]");
         const extras = JSON.parse(dia.dataset.extras || "{{}}");
+        const compensado = JSON.parse(dia.dataset.compensado || "{{}}");
         const trabaja = personas.includes(nombre);
         const libra = libres.includes(nombre);
         const deVacaciones = vacaciones.includes(nombre);
         const tieneExtra = Object.prototype.hasOwnProperty.call(extras, nombre);
-        const match = !nombre || trabaja || libra || deVacaciones || tieneExtra;
+        const deCompensado = Object.prototype.hasOwnProperty.call(compensado, nombre);
+        const match = !nombre || trabaja || libra || deVacaciones || tieneExtra || deCompensado;
         dia.classList.toggle("resaltado", !!nombre && trabaja);
-        dia.classList.toggle("libre-resaltado", !!nombre && libra && !trabaja && !deVacaciones);
+        dia.classList.toggle("libre-resaltado", !!nombre && libra && !trabaja && !deVacaciones && !deCompensado);
         dia.classList.toggle("atenuado", !!nombre && !match);
         dia.querySelectorAll(".puesto").forEach(p => {{
           p.classList.toggle("resaltado", !!nombre && p.dataset.persona === nombre);
@@ -1155,6 +1253,9 @@ def generar_html(
         }});
         dia.querySelectorAll(".vacacion").forEach(v => {{
           v.classList.toggle("resaltado", !!nombre && v.dataset.persona === nombre);
+        }});
+        dia.querySelectorAll(".compensado").forEach(c => {{
+          c.classList.toggle("resaltado", !!nombre && c.dataset.persona === nombre);
         }});
         dia.querySelectorAll(".extra").forEach(e => {{
           e.classList.toggle("resaltado", !!nombre && e.dataset.persona === nombre);
@@ -1171,12 +1272,14 @@ def generar_html(
       let diasTrabajo = 0;
       let diasLibres = 0;
       let diasVacaciones = 0;
+      let diasCompensado = 0;
       let totalExtras = 0;
       for (const [fecha, puestos] of Object.entries(DATOS).sort()) {{
         const mios = puestos.filter(p => p.persona === nombre);
         const libra = (LIBRAN[fecha] || []).includes(nombre);
         const deVacaciones = (VACACIONES[fecha] || []).includes(nombre);
         const horasExtra = (EXTRAS[fecha] || {{}})[nombre] || 0;
+        const horasComp = (COMPENSADO[fecha] || {{}})[nombre] || 0;
         const f = new Date(fecha + "T12:00:00");
         const txt = f.toLocaleDateString("es-ES", {{ weekday: "short", day: "numeric", month: "short" }});
         if (mios.length) {{
@@ -1187,6 +1290,9 @@ def generar_html(
         }} else if (deVacaciones) {{
           diasVacaciones++;
           lineas.push(`<li><strong>${{txt}}</strong> — <em>Vacaciones</em></li>`);
+        }} else if (horasComp) {{
+          diasCompensado++;
+          lineas.push(`<li><strong>${{txt}}</strong> — <em>Compensado</em> (${{horasComp}} h)</li>`);
         }} else if (libra) {{
           diasLibres++;
           lineas.push(`<li><strong>${{txt}}</strong> — <em>Libre</em></li>`);
@@ -1198,7 +1304,10 @@ def generar_html(
       const partes = [`${{diasTrabajo}} días asignados`];
       if (diasLibres) partes.push(`${{diasLibres}} libres`);
       if (diasVacaciones) partes.push(`${{diasVacaciones}} vacaciones`);
+      if (diasCompensado) partes.push(`${{diasCompensado}} compensación`);
       if (totalExtras) partes.push(`${{totalExtras}} h extras`);
+      const saldo = COMPENSACION[nombre];
+      if (saldo) partes.push(`${{saldo.restante}} h compensación restantes`);
       resumen.innerHTML = `<h3>${{nombre}} — ${{partes.join(", ")}}</h3><ul>${{lineas.join("")}}</ul>`;
       resumen.classList.add("visible");
     }}

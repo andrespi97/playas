@@ -22,6 +22,10 @@ PAGES_NOJEKYLL_PATH = PAGES_DIR / ".nojekyll"
 # Jornada ordinaria de un día asignado sin marca de horas_extras
 HORAS_JORNADA = 8.0
 
+# 1 día extra → 1,5 días libres (Alex / Claudio). Editable en config.yaml.
+FACTOR_COMPENSACION = 1.5
+MARCA_COMPENSADO = "compensado"
+
 # Socorristas cuyas horas siempre van a extras (nunca turno ordinario).
 # Si están asignados sin horas_extras explícitas, cuentan 8 h como extra.
 HORAS_SOLO_EXTRAS = frozenset({"Aaron", "Anxo", "Arturo", "Rober"})
@@ -262,6 +266,94 @@ def parse_horas_pendientes(cfg: dict | None) -> dict[str, float]:
     return dict(sorted(resultado.items(), key=lambda p: (-p[1], p[0].casefold())))
 
 
+def parse_compensacion(cfg: dict | None) -> tuple[float, frozenset[str]]:
+    """Factor y nombres de pila que cobran extras en días libres."""
+    if not cfg:
+        return FACTOR_COMPENSACION, frozenset()
+    bruto = cfg.get("compensacion") or {}
+    if not isinstance(bruto, dict):
+        return FACTOR_COMPENSACION, frozenset()
+    try:
+        factor = float(bruto.get("factor", FACTOR_COMPENSACION))
+    except (TypeError, ValueError):
+        factor = FACTOR_COMPENSACION
+    if factor <= 0:
+        factor = FACTOR_COMPENSACION
+    personas = frozenset(
+        solo_nombre(str(n).strip())
+        for n in (bruto.get("personas") or [])
+        if str(n).strip() and not es_nombre_vacante(str(n).strip())
+    )
+    return factor, personas
+
+
+def contar_horas_compensadas(filas: list[dict[str, str]]) -> dict[str, float]:
+    """Suma de horas marcadas Nombre:horas:compensado en el CSV."""
+    usado: dict[str, float] = {}
+    for fila in filas:
+        try:
+            compensado = parse_horas_compensadas(fila.get("horas_extras", ""))
+        except ValueError:
+            continue
+        for nombre, horas in compensado.items():
+            usado[nombre] = usado.get(nombre, 0.0) + float(horas)
+    return usado
+
+
+def saldos_compensacion(
+    cfg: dict | None,
+    filas: list[dict[str, str]],
+) -> list[dict[str, float | str]]:
+    """Crédito (pendientes × factor), gastado en el CSV y restante por persona."""
+    factor, personas = parse_compensacion(cfg)
+    if not personas:
+        return []
+    pendientes = parse_horas_pendientes(cfg)
+    usado = contar_horas_compensadas(filas)
+    resultado: list[dict[str, float | str]] = []
+    for nombre in personas:
+        pend = float(pendientes.get(nombre, 0.0))
+        credito = pend * factor
+        gastado = float(usado.get(nombre, 0.0))
+        resultado.append(
+            {
+                "nombre": nombre,
+                "pendientes": pend,
+                "credito": credito,
+                "gastado": gastado,
+                "restante": credito - gastado,
+            }
+        )
+    return sorted(
+        resultado,
+        key=lambda p: (-float(p["restante"]), str(p["nombre"]).casefold()),
+    )
+
+
+def errores_saldos_compensacion(
+    cfg: dict | None,
+    filas: list[dict[str, str]],
+) -> list[str]:
+    errores: list[str] = []
+    for saldo in saldos_compensacion(cfg, filas):
+        if float(saldo["restante"]) < -1e-9:
+            errores.append(
+                f"{saldo['nombre']}: compensación usada ({float(saldo['gastado']):g} h) "
+                f"supera el crédito ({float(saldo['credito']):g} h)"
+            )
+    return errores
+
+
+def nombres_ausentes_admin_fila(fila: dict[str, str]) -> set[str]:
+    """Vacaciones y compensación (Nombre:horas:compensado) del día."""
+    ausentes = set(parse_lista_nombres(fila.get("vacaciones", "")))
+    try:
+        ausentes.update(parse_horas_compensadas(fila.get("horas_extras", "")))
+    except ValueError:
+        pass
+    return ausentes
+
+
 def normalizar_fila_csv(fila: dict[str, str]) -> dict[str, str]:
     """Une cesantes2+ en cesantes y elimina columnas legacy."""
     fila = dict(fila)
@@ -304,29 +396,82 @@ def format_lista_nombres(nombres: list[str]) -> str:
     return "; ".join(sorted({n for n in nombres if n}, key=str.casefold))
 
 
-def parse_horas_extras(celda: str) -> dict[str, float]:
-    """Formato: Nombre:horas; Nombre:horas (horas decimales permitidas)."""
+def parse_anotaciones_horas(celda: str) -> tuple[dict[str, float], dict[str, float]]:
+    """Formato: Nombre:horas o Nombre:horas:compensado, separados por ;.
+
+    Devuelve (extras trabajadas, horas compensadas / días libres).
+    """
+    extras: dict[str, float] = {}
+    compensado: dict[str, float] = {}
     if not celda or not celda.strip():
-        return {}
-    resultado: dict[str, float] = {}
+        return extras, compensado
     for parte in celda.replace(",", ";").split(";"):
         parte = parte.strip()
         if not parte:
             continue
         if ":" not in parte:
-            raise ValueError(f"horas_extras inválido: «{parte}» (use Nombre:horas)")
-        nombre, horas_txt = parte.split(":", 1)
-        nombre = solo_nombre(nombre.strip())
-        horas = float(horas_txt.strip().replace(",", "."))
-        resultado[nombre] = horas
-    return resultado
+            raise ValueError(
+                f"horas_extras inválido: «{parte}» "
+                f"(use Nombre:horas o Nombre:horas:{MARCA_COMPENSADO})"
+            )
+        trozos = [t.strip() for t in parte.split(":")]
+        if len(trozos) == 2:
+            nombre_txt, horas_txt = trozos
+            marca = ""
+        elif len(trozos) == 3:
+            nombre_txt, horas_txt, marca = trozos
+        else:
+            raise ValueError(
+                f"horas_extras inválido: «{parte}» "
+                f"(use Nombre:horas o Nombre:horas:{MARCA_COMPENSADO})"
+            )
+        nombre = solo_nombre(nombre_txt)
+        if not nombre:
+            raise ValueError(f"horas_extras inválido: «{parte}»")
+        try:
+            horas = float(horas_txt.replace(",", "."))
+        except ValueError as e:
+            raise ValueError(
+                f"horas_extras inválido: «{parte}» "
+                f"(use Nombre:horas o Nombre:horas:{MARCA_COMPENSADO})"
+            ) from e
+        if marca.casefold() == MARCA_COMPENSADO:
+            compensado[nombre] = horas
+        elif not marca:
+            extras[nombre] = horas
+        else:
+            raise ValueError(f"horas_extras inválido: marca «{marca}» en «{parte}»")
+    return extras, compensado
 
 
-def format_horas_extras(extras: dict[str, float]) -> str:
-    return "; ".join(
+def parse_horas_extras(celda: str) -> dict[str, float]:
+    """Extras trabajadas: Nombre:horas (ignora entradas :compensado)."""
+    extras, _ = parse_anotaciones_horas(celda)
+    return extras
+
+
+def parse_horas_compensadas(celda: str) -> dict[str, float]:
+    """Días libres por compensación: Nombre:horas:compensado."""
+    _, compensado = parse_anotaciones_horas(celda)
+    return compensado
+
+
+def format_horas_extras(
+    extras: dict[str, float],
+    compensado: dict[str, float] | None = None,
+) -> str:
+    partes = [
         f"{nombre}:{horas:g}"
         for nombre, horas in sorted(extras.items(), key=lambda par: par[0].casefold())
-    )
+    ]
+    if compensado:
+        partes.extend(
+            f"{nombre}:{horas:g}:{MARCA_COMPENSADO}"
+            for nombre, horas in sorted(
+                compensado.items(), key=lambda par: par[0].casefold()
+            )
+        )
+    return "; ".join(partes)
 
 
 def es_nombre_vacante(nombre: str) -> bool:
@@ -453,14 +598,14 @@ def sustitutos_presentes_fila(fila: dict[str, str], sustitutos: list[str]) -> li
     """Sustitutos que trabajan ese día, en el orden del config."""
     if not sustitutos:
         return []
-    ausentes = set(parse_lista_nombres(fila.get("vacaciones", "")))
+    ausentes = nombres_ausentes_admin_fila(fila)
     asignados = set(nombres_asignados_dia(fila))
     return [solo_nombre(nombre) for nombre in sustitutos if solo_nombre(nombre) in asignados and solo_nombre(nombre) not in ausentes]
 
 
 def cubridores_vacantes_fila(fila: dict[str, str], sustitutos: list[str]) -> list[str]:
     """Personas que cubren vacantes: sustitutos asignados y trabajadores en horas_extras."""
-    ausentes = set(parse_lista_nombres(fila.get("vacaciones", "")))
+    ausentes = nombres_ausentes_admin_fila(fila)
     asignados = set(nombres_asignados_dia(fila))
     cubridores: list[str] = []
     vistos: set[str] = set()
