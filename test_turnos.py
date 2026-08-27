@@ -279,6 +279,23 @@ class TestRotacion4x2(unittest.TestCase):
                     f"{nombre} asignado el {fila['fecha']} en día libre sin horas_extras",
                 )
 
+    def test_fernando_libra_13_sep_a_cambio_del_30_ago(self) -> None:
+        """Fernando libra el 13 sep (trabajo G1); el 30 ago (libranza G1) cuenta como horas normales."""
+        cfg = cargar_config_validada()
+        rot = cfg["rotacion"]
+        inicio = parse_fecha(cfg["periodo"]["inicio"])
+        filas = {f["fecha"]: f for f in filas_csv()}
+        self.assertTrue(trabaja_en_dia((parse_fecha("2026-09-13") - inicio).days, 1, rot))
+        self.assertFalse(trabaja_en_dia((parse_fecha("2026-08-30") - inicio).days, 1, rot))
+        self.assertNotIn("Fernando", nombres_asignados_dia(filas["2026-09-13"]))
+        self.assertIn("Fernando", nombres_asignados_dia(filas["2026-08-30"]))
+        self.assertNotIn("Fernando", parse_horas_extras(filas["2026-08-30"].get("horas_extras", "")))
+        self.assertIn("Esther", parse_horas_extras(filas["2026-08-30"].get("horas_extras", "")))
+        self.assertEqual(filas["2026-09-13"]["socorrista_chapela"], "Claudio")
+        self.assertEqual(filas["2026-09-13"]["patron_chapela"], "Esther")
+        self.assertFalse(filas["2026-09-13"]["socorrista_zodiac"].strip())
+        self.assertEqual(filas["2026-09-13"]["abrir_torre"], "Anxo")
+
     def test_rodrigo_cambia_miercoles_19_por_26(self) -> None:
         """Trueque de miércoles: libra el 19 (trabajo G3) y trabaja el 26 (libranza G3)."""
         cfg = cargar_config_validada()
