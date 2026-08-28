@@ -18,6 +18,7 @@ from generar_turnos import (  # noqa: E402
     EQUILIBRIO_ZODIAC_DESDE,
     ErrorGeneracion,
     ausentes_por_disponibilidad,
+    ausentes_por_hasta,
     cargar_config_validada,
     construir_personas,
     contar_socorristas_trabajando,
@@ -139,7 +140,7 @@ class TestCoberturaExtendida(unittest.TestCase):
                 fila.get("vacaciones", ""), personas, fila.get("horas_extras", "")
             ) | ausentes_por_disponibilidad(
                 cfg, fecha_str, personas
-            )
+            ) | ausentes_por_hasta(cfg, fecha_str)
             n = contar_socorristas_trabajando(personas, dia_idx, rot, ausentes, cfg, fecha_str)
             err = validar_cobertura_extendida(fila, n)
             if err == "Zodiac sin patrón Cesantes" and parse_fecha(fecha_str) < EQUILIBRIO_ZODIAC_DESDE:
@@ -319,6 +320,15 @@ class TestRotacion4x2(unittest.TestCase):
         filas = {f["fecha"]: f for f in filas_csv()}
         for fecha in ("2026-08-28", "2026-08-29", "2026-08-30"):
             self.assertNotIn("Rodrigo", nombres_asignados_dia(filas[fecha]), fecha)
+
+    def test_rodrigo_ultimo_dia_3_sep(self) -> None:
+        """Jueves 3 sep es el último día de Rodrigo."""
+        filas = {f["fecha"]: f for f in filas_csv()}
+        self.assertIn("Rodrigo", nombres_asignados_dia(filas["2026-09-03"]))
+        for fila in filas_csv():
+            if fila["fecha"] <= "2026-09-03":
+                continue
+            self.assertNotIn("Rodrigo", nombres_asignados_dia(fila), fila["fecha"])
 
     def test_detecta_racha_de_5_dias(self) -> None:
         self.assertEqual(max_racha_dias([0, 1, 2, 3, 4]), 5)

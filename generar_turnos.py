@@ -108,6 +108,11 @@ def validar_config(cfg: dict) -> list[str]:
                 continue
             if entrada["grupo"] not in (1, 2, 3):
                 errores.append(f"Grupo inválido en {lista}: {entrada['nombre']}")
+            if hasta := entrada.get("hasta"):
+                try:
+                    parse_fecha(hasta)
+                except ValueError:
+                    errores.append(f"{lista}: «{entrada['nombre']}» hasta inválida (use YYYY-MM-DD)")
             nombres_registrados.add(entrada["nombre"])
 
     prefs = cfg.get("preferencias", {})
@@ -753,6 +758,21 @@ def ausentes_por_disponibilidad(
     return ausentes
 
 
+def mapa_hasta(cfg: dict) -> dict[str, date]:
+    """Nombre completo → último día inclusive."""
+    resultado: dict[str, date] = {}
+    for lista in ("socorristas", "patrones"):
+        for entrada in cfg.get(lista) or []:
+            if hasta := entrada.get("hasta"):
+                resultado[entrada["nombre"]] = parse_fecha(hasta)
+    return resultado
+
+
+def ausentes_por_hasta(cfg: dict, fecha_str: str) -> set[str]:
+    fecha = parse_fecha(fecha_str)
+    return {nombre for nombre, hasta in mapa_hasta(cfg).items() if fecha > hasta}
+
+
 def admin_desde_existente(existentes: dict[str, dict[str, str]], fecha_str: str) -> dict[str, str]:
     """Copia vacaciones/horas_extras del CSV previo. Nunca las inventa."""
     prev = existentes.get(fecha_str, {})
@@ -1355,14 +1375,18 @@ def libran_por_fecha(cfg: dict, fechas_iso: list[str]) -> dict[str, list[str]]:
     personas = construir_personas(cfg)
     rotacion = cfg["rotacion"]
     inicio = parse_fecha(cfg["periodo"]["inicio"])
+    limites = mapa_hasta(cfg)
     libres: dict[str, list[str]] = {}
     for fecha_str in fechas_iso:
         dia_idx = (parse_fecha(fecha_str) - inicio).days
+        fecha = parse_fecha(fecha_str)
         libres[fecha_str] = sorted(
             {
                 solo_nombre(p.nombre)
                 for p in personas
-                if not es_vacante(p) and not trabaja_en_dia(dia_idx, p.grupo, rotacion)
+                if not es_vacante(p)
+                and not trabaja_en_dia(dia_idx, p.grupo, rotacion)
+                and not (p.nombre in limites and fecha > limites[p.nombre])
             },
             key=str.casefold,
         )
@@ -1413,7 +1437,7 @@ def generar_csv(
             admin["vacaciones"], personas, admin.get("horas_extras", "")
         ) | ausentes_por_disponibilidad(
             cfg, fecha_str, personas
-        )
+        ) | ausentes_por_hasta(cfg, fecha_str)
 
         previa = existentes.get(fecha_str)
         bloqueada = fecha_str in bloqueados_originales
@@ -1522,7 +1546,7 @@ def generar_csv(
                 fila.get("vacaciones", ""), personas, fila.get("horas_extras", "")
             ) | ausentes_por_disponibilidad(
                 cfg, fecha_str, personas
-            )
+            ) | ausentes_por_hasta(cfg, fecha_str)
             n_soc = contar_socorristas_trabajando(
                 personas, dia_idx, rotacion, ausentes, cfg, fecha_str
             )
