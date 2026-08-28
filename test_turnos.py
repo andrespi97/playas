@@ -297,6 +297,45 @@ class TestRotacion4x2(unittest.TestCase):
         self.assertFalse(filas["2026-09-13"]["socorrista_zodiac"].strip())
         self.assertEqual(filas["2026-09-13"]["abrir_torre"], "Anxo")
 
+    def test_esther_extras_libres_septiembre(self) -> None:
+        """Esther trabaja de extra (patrón Chapela) los días que libra en septiembre."""
+        cfg = cargar_config_validada()
+        rot = cfg["rotacion"]
+        inicio = parse_fecha(cfg["periodo"]["inicio"])
+        n = 0
+        for fila in filas_csv():
+            d = parse_fecha(fila["fecha"])
+            if d.month != 9:
+                continue
+            if trabaja_en_dia((d - inicio).days, 1, rot):
+                continue
+            n += 1
+            self.assertIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
+            self.assertEqual(fila["patron_chapela"], "Esther", fila["fecha"])
+            self.assertEqual(fila["patron_cesantes"], "Adrián", fila["fecha"])
+            self.assertEqual(
+                parse_horas_extras(fila.get("horas_extras", "")).get("Esther"),
+                8.0,
+                fila["fecha"],
+            )
+            self.assertTrue(fila.get("socorrista_zodiac", "").strip(), fila["fecha"])
+        self.assertEqual(n, 10)
+
+    def test_adrian_cambia_jueves_27_por_sabado_29(self) -> None:
+        """Trueque: libra el 27 (trabajo G2) y trabaja el 29 (libranza G2) como horas normales."""
+        cfg = cargar_config_validada()
+        rot = cfg["rotacion"]
+        inicio = parse_fecha(cfg["periodo"]["inicio"])
+        filas = {f["fecha"]: f for f in filas_csv()}
+        self.assertTrue(trabaja_en_dia((parse_fecha("2026-08-27") - inicio).days, 2, rot))
+        self.assertFalse(trabaja_en_dia((parse_fecha("2026-08-29") - inicio).days, 2, rot))
+        self.assertNotIn("Adrián", nombres_asignados_dia(filas["2026-08-27"]))
+        self.assertFalse(filas["2026-08-27"]["socorrista_zodiac"].strip())
+        self.assertIn("Adrián", nombres_asignados_dia(filas["2026-08-29"]))
+        self.assertEqual(filas["2026-08-29"]["patron_cesantes"], "Adrián")
+        self.assertEqual(filas["2026-08-29"]["socorrista_zodiac"], "Rober")
+        self.assertNotIn("Adrián", parse_horas_extras(filas["2026-08-29"].get("horas_extras", "")))
+
     def test_rodrigo_cambia_miercoles_19_por_26(self) -> None:
         """Trueque de miércoles: libra el 19 (trabajo G3) y trabaja el 26 (libranza G3)."""
         cfg = cargar_config_validada()
