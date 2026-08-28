@@ -607,9 +607,36 @@ class TestSustitutos(unittest.TestCase):
         cfg = cargar_config_validada()
         generar_csv(cfg, congelar=False)
         filas = {f["fecha"]: f for f in cargar_filas_csv()}
+        self.assertNotIn("Anxo", nombres_asignados_dia(filas["2026-08-02"]), "Anxo no debe trabajar el 2 ago")
+        self.assertNotIn("Anxo", nombres_asignados_dia(filas["2026-08-09"]), "Anxo no debe trabajar el 9 ago")
         self.assertNotIn("Anxo", nombres_asignados_dia(filas["2026-08-22"]), "Anxo no debe trabajar el 22 ago")
         self.assertNotIn("Anxo", nombres_asignados_dia(filas["2026-08-23"]), "Anxo no debe trabajar el 23 ago")
-        self.assertIn("Anxo", nombres_asignados_dia(filas["2026-08-16"]), "Anxo sigue los demás fines de semana")
+        self.assertIn("Anxo", nombres_asignados_dia(filas["2026-08-16"]), "Anxo sigue el 16 ago")
+
+    def test_anxo_horas_agosto_enviadas(self) -> None:
+        """Horas de Anxo en agosto: las que se mandaron a firmar."""
+        esperado = {
+            "2026-08-05": 4.0,
+            "2026-08-08": 8.0,
+            "2026-08-10": 4.0,
+            "2026-08-11": 4.0,
+            "2026-08-14": 4.0,
+            "2026-08-16": 8.0,
+            "2026-08-19": 4.0,
+        }
+        for fila in filas_csv():
+            if not fila["fecha"].startswith("2026-08"):
+                continue
+            parcial = contar_horas_fila(fila).get("Anxo")
+            total = (
+                float(parcial["horas_turno"]) + float(parcial["horas_extras"])
+                if parcial
+                else 0.0
+            )
+            if fila["fecha"] in esperado:
+                self.assertEqual(total, esperado[fila["fecha"]], fila["fecha"])
+            else:
+                self.assertEqual(total, 0.0, fila["fecha"])
 
     def test_rober_en_dias_disponibilidad_agosto(self) -> None:
         cfg = cargar_config_validada()
