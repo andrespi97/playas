@@ -701,8 +701,6 @@ class TestSustitutos(unittest.TestCase):
             "2026-08-17",
             "2026-08-20",
             "2026-08-21",
-            "2026-08-24",
-            "2026-08-27",
             "2026-08-28",
             "2026-08-31",
         )
@@ -720,6 +718,12 @@ class TestSustitutos(unittest.TestCase):
                     parse_lista_nombres(fila.get("cesantes", "")),
                     f"Aaron no en Cesantes el {fecha}",
                 )
+
+    def test_aaron_no_vino_24_27_ago_ni_4_sep(self) -> None:
+        """Aaron no vino el lunes 24, el jueves 27 ni el viernes 4."""
+        filas = {f["fecha"]: f for f in filas_csv()}
+        for fecha in ("2026-08-24", "2026-08-27", "2026-09-04"):
+            self.assertNotIn("Aaron", nombres_asignados_dia(filas[fecha]), fecha)
 
     def test_asignado_no_aparece_como_libre(self) -> None:
         from generar_turnos import libran_por_fecha
