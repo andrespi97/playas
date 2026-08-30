@@ -321,6 +321,32 @@ class TestRotacion4x2(unittest.TestCase):
             self.assertTrue(fila.get("socorrista_zodiac", "").strip(), fila["fecha"])
         self.assertEqual(n, 10)
 
+    def test_fernando_extras_libres_septiembre_salvo_13(self) -> None:
+        """Fernando extra (soc. Chapela) los días que libra en septiembre, menos el 13."""
+        cfg = cargar_config_validada()
+        rot = cfg["rotacion"]
+        inicio = parse_fecha(cfg["periodo"]["inicio"])
+        filas = {f["fecha"]: f for f in filas_csv()}
+        n = 0
+        for fila in filas_csv():
+            d = parse_fecha(fila["fecha"])
+            if d.month != 9:
+                continue
+            if trabaja_en_dia((d - inicio).days, 1, rot):
+                continue
+            n += 1
+            self.assertEqual(fila["socorrista_chapela"], "Fernando", fila["fecha"])
+            self.assertEqual(
+                parse_horas_extras(fila.get("horas_extras", "")).get("Fernando"),
+                8.0,
+                fila["fecha"],
+            )
+        self.assertEqual(n, 10)
+        self.assertNotIn("Fernando", nombres_asignados_dia(filas["2026-09-13"]))
+        self.assertNotIn(
+            "Fernando", parse_horas_extras(filas["2026-09-13"].get("horas_extras", ""))
+        )
+
     def test_adrian_cambia_jueves_27_por_sabado_29(self) -> None:
         """Trueque: libra el 27 (trabajo G2) y trabaja el 29 (libranza G2) como horas normales."""
         cfg = cargar_config_validada()
