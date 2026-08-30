@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import csv
 import shutil
 from datetime import date, datetime
@@ -674,8 +675,9 @@ def publicar_html_github_pages(origen: Path | None = None) -> Path:
 
 
 def etiqueta_periodo(cfg: dict) -> str:
-    ini = cfg.get("periodo", {}).get("inicio", "")
-    fin = cfg.get("periodo", {}).get("fin", "")
+    periodo = cfg.get("periodo", {})
+    ini = periodo.get("inicio", "")
+    fin = periodo.get("vista_hasta") or periodo.get("fin", "")
     if not ini or not fin:
         return ""
     d_ini = parse_fecha(ini)
@@ -695,8 +697,12 @@ def etiqueta_periodo(cfg: dict) -> str:
         "Noviembre",
         "Diciembre",
     )
-    if d_ini.year == d_fin.year and d_ini.month == d_fin.month:
+    ultimo_dia = calendar.monthrange(d_fin.year, d_fin.month)[1]
+    fin_txt = meses[d_fin.month]
+    if d_fin.day != ultimo_dia:
+        fin_txt = f"{d_fin.day} {meses[d_fin.month].lower()}"
+    if d_ini.year == d_fin.year and d_ini.month == d_fin.month and d_fin.day == ultimo_dia:
         return f"{meses[d_ini.month]} {d_ini.year}"
     if d_ini.year == d_fin.year:
-        return f"{meses[d_ini.month]} – {meses[d_fin.month]} {d_ini.year}"
+        return f"{meses[d_ini.month]} – {fin_txt} {d_ini.year}"
     return f"{d_ini.isoformat()} – {fin}"

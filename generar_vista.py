@@ -413,6 +413,8 @@ def generar_html(
             f for f in filas
             if (d := parse_fecha(f["fecha"])).year == anio_filtro and d.month == mes_filtro
         ]
+    if vista_hasta := (cfg or {}).get("periodo", {}).get("vista_hasta"):
+        filas = [f for f in filas if f["fecha"] <= vista_hasta]
     por_mes = filas_por_mes(filas)
     trabajadores = nombres_plantilla(cfg) if cfg else nombres_unicos(filas)
     plantilla_sin_vacantes = [n for n in trabajadores if not es_nombre_vacante(n)]

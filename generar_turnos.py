@@ -79,6 +79,7 @@ def validar_config(cfg: dict) -> list[str]:
     for clave in ("inicio", "fin"):
         if clave not in periodo:
             errores.append(f"Falta periodo.{clave}")
+    inicio = fin = None
     if "inicio" in periodo and "fin" in periodo:
         try:
             inicio = parse_fecha(periodo["inicio"])
@@ -87,6 +88,15 @@ def validar_config(cfg: dict) -> list[str]:
                 errores.append("periodo.fin anterior a periodo.inicio")
         except ValueError:
             errores.append("periodo con fechas inválidas (use YYYY-MM-DD)")
+    if vista_hasta := periodo.get("vista_hasta"):
+        try:
+            hasta = parse_fecha(vista_hasta)
+            if inicio is not None and hasta < inicio:
+                errores.append("periodo.vista_hasta anterior a periodo.inicio")
+            if fin is not None and hasta > fin:
+                errores.append("periodo.vista_hasta posterior a periodo.fin")
+        except ValueError:
+            errores.append("periodo.vista_hasta inválida (use YYYY-MM-DD)")
 
     rot = cfg.get("rotacion", {})
     for clave in ("dias_trabajo", "dias_libres", "desfase_grupos"):

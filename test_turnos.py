@@ -1269,6 +1269,14 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             html,
             r'data-campo="socorrista_zodiac" data-persona="Adrián"',
         )
+        self.assertIn('data-fecha="2026-09-15"', html)
+        self.assertNotIn('data-fecha="2026-09-16"', html)
+
+    def test_csv_conserva_dias_tras_vista_hasta(self) -> None:
+        fechas = {f["fecha"] for f in cargar_filas_csv()}
+        self.assertIn("2026-09-15", fechas)
+        self.assertIn("2026-09-16", fechas)
+        self.assertIn("2026-09-30", fechas)
 
     def test_html_agosto_publico_sin_extras(self) -> None:
         from generar_vista import generar_html
@@ -1567,6 +1575,11 @@ class TestConfig(unittest.TestCase):
 
     def test_config_actual_es_valida(self) -> None:
         self.assertEqual(validar_config(cargar_config_validada()), [])
+
+    def test_vista_hasta_fuera_de_periodo(self) -> None:
+        cfg = cargar_config()
+        cfg["periodo"]["vista_hasta"] = "2026-10-01"
+        self.assertTrue(any("vista_hasta posterior" in e for e in validar_config(cfg)))
 
     def test_detecta_nombre_desconocido(self) -> None:
         cfg = cargar_config()

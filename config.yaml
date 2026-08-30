@@ -4,6 +4,8 @@
 periodo:
   inicio: "2026-07-01"
   fin: "2026-09-30"
+  # HTML: no mostrar días posteriores. El CSV sigue hasta fin (no borrar).
+  vista_hasta: "2026-09-15"
 
 # Días que no se recalculan al ejecutar generar_turnos.py
 # - pasado_automatico: conserva hoy y días anteriores (por defecto true)
