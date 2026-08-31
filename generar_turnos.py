@@ -401,6 +401,8 @@ def repartir_zodiac_desde(
     for fila in filas:
         if parse_fecha(fila["fecha"]) < desde:
             continue
+        if celda_bloqueada(fila.get("bloqueado", "")):
+            continue
         if not hay_patron_cesantes(fila):
             reubicar_zodiac_sin_patron(fila)
             continue
