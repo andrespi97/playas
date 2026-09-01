@@ -637,8 +637,9 @@ def marcar_vacantes_cubiertas(
     puestos: list[dict[str, str | bool]],
     cubridores: list[str],
     no_patron: frozenset[str] | set[str] | None = None,
+    patrones: set[str] | None = None,
 ) -> None:
-    """Etiqueta vacantes como cubiertas; respeta no_patron en puestos de patrón."""
+    """Etiqueta vacantes como cubiertas; respeta no_patron y solo patrones en puestos de patrón."""
     if not cubridores:
         return
     prohibidos = {solo_nombre(n) for n in (no_patron or ())}
@@ -649,7 +650,10 @@ def marcar_vacantes_cubiertas(
         es_patron = str(puesto.get("campo", "")) in ("patron_chapela", "patron_cesantes")
         cubridor: str | None = None
         for j, nombre in enumerate(disponibles):
-            if es_patron and solo_nombre(nombre) in prohibidos:
+            sn = solo_nombre(nombre)
+            if es_patron and sn in prohibidos:
+                continue
+            if es_patron and patrones is not None and sn not in patrones:
                 continue
             cubridor = disponibles.pop(j)
             break

@@ -49,7 +49,7 @@ fecha,socorrista_chapela,patron_chapela,llave_chapela,patron_cesantes,socorrista
 2026-08-17,Fernando,Esther,Esther,Vacante 3,,Robinson,Sergio,Aaron; Rober; Rodrigo,,,
 2026-08-18,Robinson,Esther,Adrián,Adrián,Alejandro,Sergio,Claudio,Rodrigo; Vacante 2,,Esther:8,1
 2026-08-19,Robinson,Adrián,Adrián,Vacante 3,,Claudio,Alejandro,Sergio,,Anxo:4,1
-2026-08-20,Fernando,Esther,Esther,Adrián,Arturo,Alejandro,Claudio,Aaron; Vacante 2,,,
+2026-08-20,Fernando,Esther,Esther,Adrián,Arturo,Claudio,Alejandro,Aaron; Vacante 2,,,
 2026-08-21,Fernando,Esther,Esther,Adrián,Arturo,Claudio,Alejandro,Aaron; Rodrigo,,,1
 2026-08-22,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Rober; Rodrigo,,,
 2026-08-23,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Rodrigo; Vacante 1,,,
@@ -61,32 +61,32 @@ fecha,socorrista_chapela,patron_chapela,llave_chapela,patron_cesantes,socorrista
 2026-08-29,Fernando,Esther,Esther,Adrián,Rober,Robinson,Sergio,,,,1
 2026-08-30,Fernando,Esther,Esther,Adrián,Robinson,Sergio,Alejandro,Claudio,,Esther:8,1
 2026-08-31,Robinson,Fernando,Adrián,Adrián,Sergio,Claudio,Alejandro,Rodrigo,,Fernando:8,1
-2026-09-01,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,,Vacante 1; Vacante 2,,,1
-2026-09-02,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,,Vacante 1; Vacante 2,,,1
-2026-09-03,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Rodrigo; Vacante 1,,,
+2026-09-01,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,,Sergio; Vacante 1; Vacante 2,,Sergio:8,1
+2026-09-02,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,,Sergio; Vacante 1; Vacante 2,,Sergio:8,1
+2026-09-03,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Alejandro; Rodrigo,,,1
 2026-09-04,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Vacante 1,,,
 2026-09-05,Fernando,Esther,Esther,Adrián,Robinson,Sergio,Claudio,Alejandro; Anxo,,Esther:8; Fernando:8,1
-2026-09-06,Fernando,Esther,Esther,Adrián,Sergio,Robinson,Claudio,Alejandro; Anxo,,Esther:8; Fernando:8,1
-2026-09-07,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,,Vacante 1; Vacante 2,,,1
-2026-09-08,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,,Vacante 1; Vacante 2,,,1
-2026-09-09,Fernando,Esther,Esther,Vacante 3,,Robinson,Sergio,Vacante 1,,,
+2026-09-06,Fernando,Esther,Esther,Adrián,Sergio,Robinson,Claudio,Alejandro; Anxo; Rober,,Esther:8; Fernando:8,1
+2026-09-07,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,,Sergio; Vacante 1; Vacante 2,,Sergio:8,1
+2026-09-08,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,Rober,Sergio; Vacante 1; Vacante 2,,Sergio:8,1
+2026-09-09,Fernando,Esther,Esther,Vacante 3,,Robinson,Sergio,Vacante 1,,Alejandro:8,1
 2026-09-10,Fernando,Esther,Esther,Vacante 3,,Robinson,Sergio,Vacante 1,,,
-2026-09-11,Fernando,Esther,Esther,Adrián,Robinson,Sergio,Alejandro,Claudio,,Esther:8; Fernando:8,1
-2026-09-12,Fernando,Esther,Esther,Adrián,Sergio,Robinson,Alejandro,Claudio; Anxo,,Esther:8; Fernando:8,1
-2026-09-13,Claudio,Esther,Esther,Adrián,,Alejandro,Anxo,Vacante 1; Vacante 2,,,1
-2026-09-14,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,,Vacante 1; Vacante 2,,,1
-2026-09-15,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Vacante 1,,,
+2026-09-11,Fernando,Esther,Esther,Adrián,Robinson,Sergio,,Claudio,,Esther:8; Fernando:8,1
+2026-09-12,Fernando,Esther,Esther,Adrián,Sergio,Robinson,,Claudio; Anxo,,Alejandro:8:compensado; Esther:8; Fernando:8,1
+2026-09-13,Claudio,Esther,Esther,Adrián,Rober,,Anxo,Sergio; Vacante 1; Vacante 2,,Alejandro:8:compensado; Sergio:8,1
+2026-09-14,Fernando,Esther,Esther,Adrián,Rober,Claudio,,Sergio; Vacante 1; Vacante 2,,Alejandro:8:compensado; Sergio:8,1
+2026-09-15,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Rober,,,1
 2026-09-16,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Vacante 1,,,
 2026-09-17,Fernando,Esther,Esther,Adrián,Robinson,Sergio,Claudio,Alejandro,,Esther:8; Fernando:8,1
 2026-09-18,Fernando,Esther,Esther,Adrián,Claudio,Robinson,Sergio,Alejandro,,Esther:8; Fernando:8,1
-2026-09-19,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,Anxo,Vacante 1; Vacante 2,,,1
-2026-09-20,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,Anxo,Vacante 1; Vacante 2,,,1
+2026-09-19,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,Anxo,Sergio; Vacante 1; Vacante 2,,Sergio:8,1
+2026-09-20,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,Anxo,Sergio; Vacante 1; Vacante 2,,Sergio:8,1
 2026-09-21,Fernando,Esther,Esther,Vacante 3,,Robinson,Sergio,Vacante 1,,,
 2026-09-22,Fernando,Esther,Esther,Vacante 3,,Robinson,Sergio,Vacante 1,,,
 2026-09-23,Fernando,Esther,Esther,Adrián,Sergio,Robinson,Alejandro,Claudio,,Esther:8; Fernando:8,1
 2026-09-24,Fernando,Esther,Esther,Adrián,Robinson,Sergio,Alejandro,Claudio,,Esther:8; Fernando:8,1
-2026-09-25,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,,Vacante 1; Vacante 2,,,1
-2026-09-26,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,Anxo,Vacante 1; Vacante 2,,,1
+2026-09-25,Fernando,Esther,Esther,Adrián,Alejandro,Claudio,,Sergio; Vacante 1; Vacante 2,,Sergio:8,1
+2026-09-26,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,Anxo,Sergio; Vacante 1; Vacante 2,,Sergio:8,1
 2026-09-27,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Anxo,,,
 2026-09-28,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Vacante 1,,,
 2026-09-29,Fernando,Esther,Esther,Adrián,Sergio,Robinson,Claudio,Alejandro,,Esther:8; Fernando:8,1

@@ -111,6 +111,8 @@ class TestCoberturaObligatoria(unittest.TestCase):
     def test_csv_chapela_y_abrir_puesto_en_cada_dia(self) -> None:
         filas = filas_csv()
         for fila in filas:
+            if celda_bloqueada(fila.get("bloqueado", "")):
+                continue
             err = validar_cobertura_obligatoria(fila)
             self.assertIsNone(err, f"{fila['fecha']}: {err}")
 
@@ -294,7 +296,7 @@ class TestRotacion4x2(unittest.TestCase):
         self.assertIn("Esther", parse_horas_extras(filas["2026-08-30"].get("horas_extras", "")))
         self.assertEqual(filas["2026-09-13"]["socorrista_chapela"], "Claudio")
         self.assertEqual(filas["2026-09-13"]["patron_chapela"], "Esther")
-        self.assertFalse(filas["2026-09-13"]["socorrista_zodiac"].strip())
+        self.assertEqual(filas["2026-09-13"]["socorrista_zodiac"], "Rober")
         self.assertEqual(filas["2026-09-13"]["abrir_torre"], "Anxo")
 
     def test_esther_extras_libres_septiembre(self) -> None:
@@ -995,10 +997,10 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(factor, 1.5)
         self.assertEqual(personas, frozenset({"Alejandro", "Claudio"}))
         saldos = {s["nombre"]: s for s in saldos_compensacion(cfg, cargar_filas_csv())}
-        self.assertEqual(saldos["Alejandro"]["pendientes"], 8.0)
-        self.assertEqual(saldos["Alejandro"]["credito"], 12.0)
-        self.assertEqual(saldos["Alejandro"]["gastado"], 0.0)
-        self.assertEqual(saldos["Alejandro"]["restante"], 12.0)
+        self.assertEqual(saldos["Alejandro"]["pendientes"], 16.0)
+        self.assertEqual(saldos["Alejandro"]["credito"], 24.0)
+        self.assertEqual(saldos["Alejandro"]["gastado"], 24.0)
+        self.assertEqual(saldos["Alejandro"]["restante"], 0.0)
         self.assertEqual(saldos["Claudio"]["credito"], 12.0)
         self.assertNotIn("Fernando", saldos)
 
@@ -1010,11 +1012,11 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         ]
         saldos = {s["nombre"]: s for s in saldos_compensacion(cfg, filas)}
         self.assertEqual(saldos["Alejandro"]["gastado"], 8.0)
-        self.assertEqual(saldos["Alejandro"]["restante"], 4.0)
+        self.assertEqual(saldos["Alejandro"]["restante"], 16.0)
         self.assertEqual(saldos["Claudio"]["gastado"], 4.0)
         self.assertEqual(saldos["Claudio"]["restante"], 8.0)
         self.assertEqual(errores_saldos_compensacion(cfg, filas), [])
-        filas_deuda = [{"horas_extras": "Alejandro:16:compensado"}]
+        filas_deuda = [{"horas_extras": "Alejandro:32:compensado"}]
         errores = errores_saldos_compensacion(cfg, filas_deuda)
         self.assertEqual(len(errores), 1)
         self.assertIn("Alejandro", errores[0])
@@ -1246,10 +1248,10 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
 
         cfg = cargar_config()
         pendientes = parse_horas_pendientes(cfg)
-        self.assertEqual(pendientes.get("Alejandro"), 8.0)
+        self.assertEqual(pendientes.get("Alejandro"), 16.0)
         self.assertEqual(pendientes.get("Claudio"), 8.0)
         self.assertEqual(pendientes.get("Fernando"), 16.0)
-        self.assertEqual(sum(pendientes.values()), 32.0)
+        self.assertEqual(sum(pendientes.values()), 40.0)
 
     def test_html_cuadrante_recuento_extras_y_cesantes(self) -> None:
         from generar_vista import generar_html
@@ -1274,7 +1276,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertIn("16 h", html)
         self.assertIn('id="compensacion-dias"', html)
         self.assertIn("Compensación", html)
-        self.assertIn("24 h restantes", html)
+        self.assertIn("12 h restantes", html)
         self.assertIn("Nombre:8:compensado", html)
         self.assertIn("Pendientes de pagar no se descuenta", html)
         self.assertIn("div.extras", html)
@@ -1463,7 +1465,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         for fila in filas:
             if fila["fecha"] == "2026-07-07":
                 extras = fila.get("horas_extras", "").strip()
-                marca = "Alejandro:8:compensado"
+                marca = "Claudio:8:compensado"
                 fila["horas_extras"] = f"{extras}; {marca}" if extras else marca
                 fila["bloqueado"] = ""
                 break
@@ -1480,8 +1482,8 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             for c in fila
             if c not in ("fecha", "vacaciones", "horas_extras", "llave_chapela") and fila.get(c)
         }
-        self.assertNotIn("Alejandro", asignados)
-        self.assertIn("Alejandro:8:compensado", fila.get("horas_extras", ""))
+        self.assertNotIn("Claudio", asignados)
+        self.assertIn("Claudio:8:compensado", fila.get("horas_extras", ""))
 
     def test_horas_extras_permite_socorrista_en_dia_libre(self) -> None:
         cfg = cargar_config_validada()

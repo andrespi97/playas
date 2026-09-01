@@ -216,10 +216,12 @@ def puestos_dia(fila: dict[str, str], sustitutos: list[str] | None = None) -> li
         solo_nombre(n)
         for n in (cfg.get("preferencias") or {}).get("no_patron", [])
     )
+    patrones = {solo_nombre(p["nombre"]) for p in (cfg.get("patrones") or [])}
     marcar_vacantes_cubiertas(
         puestos,
         cubridores_vacantes_fila(fila, sustitutos or []),
         no_patron=no_patron,
+        patrones=patrones,
     )
     return puestos
 
