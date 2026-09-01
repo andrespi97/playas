@@ -953,9 +953,12 @@ def generar_html(
     }}
     .pdf-export .libre,
     .pdf-export .vacacion,
-    .pdf-export .compensado,
     .pdf-export .extra {{
       font-size: 0.45rem; line-height: 1.12; padding: 1px 2px;
+    }}
+    .pdf-export .compensaciones,
+    .pdf-export .compensado {{
+      display: none;
     }}
     .pdf-export .etiq-cubierta {{ font-size: 0.42rem; }}
     .pdf-export.mostrar-libres .libres {{ display: flex; }}

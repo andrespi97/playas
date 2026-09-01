@@ -194,6 +194,34 @@ class TestPdfMes(unittest.TestCase):
         self.assertIn("Adrián", nombres)
         verificar_pdf_mes(datos, nombres_csv=nombres)
 
+    def test_pdf_septiembre_oculta_compensado(self) -> None:
+        """El PDF no muestra los chips «Compensado» (sí visibles en pantalla)."""
+        from playwright.sync_api import sync_playwright
+
+        browser = self._playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(self._url, wait_until="networkidle", timeout=60_000)
+        page.wait_for_function(
+            "() => typeof construirPdfMes === 'function'",
+            timeout=30_000,
+        )
+        page.click('.tab-mes[data-target="mes-2026-09"]')
+        en_pantalla = page.evaluate(
+            "document.querySelectorAll('#mes-2026-09 .compensado').length"
+        )
+        self.assertGreater(en_pantalla, 0, "septiembre debe tener compensados en pantalla")
+        en_pdf = page.evaluate("""() => {
+            const mes = document.querySelector('.mes.visible');
+            const w = construirPdfMes(mes);
+            document.body.appendChild(w);
+            const chips = [...w.querySelectorAll('.compensado')];
+            const visibles = chips.filter(c => getComputedStyle(c).display !== 'none').length;
+            w.remove();
+            return visibles;
+        }""")
+        self.assertEqual(en_pdf, 0, "el PDF no debe mostrar chips de compensado")
+        browser.close()
+
 
 if __name__ == "__main__":
     unittest.main()
