@@ -294,7 +294,7 @@ class TestRotacion4x2(unittest.TestCase):
         self.assertIn("Fernando", nombres_asignados_dia(filas["2026-08-30"]))
         self.assertNotIn("Fernando", parse_horas_extras(filas["2026-08-30"].get("horas_extras", "")))
         self.assertIn("Esther", parse_horas_extras(filas["2026-08-30"].get("horas_extras", "")))
-        self.assertEqual(filas["2026-09-13"]["socorrista_chapela"], "Claudio")
+        self.assertEqual(filas["2026-09-13"]["socorrista_chapela"], "Sergio")
         self.assertEqual(filas["2026-09-13"]["patron_chapela"], "Esther")
         self.assertEqual(filas["2026-09-13"]["socorrista_zodiac"], "Rober")
         self.assertEqual(filas["2026-09-13"]["abrir_torre"], "Anxo")
@@ -1001,7 +1001,10 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(saldos["Alejandro"]["credito"], 24.0)
         self.assertEqual(saldos["Alejandro"]["gastado"], 24.0)
         self.assertEqual(saldos["Alejandro"]["restante"], 0.0)
-        self.assertEqual(saldos["Claudio"]["credito"], 12.0)
+        self.assertEqual(saldos["Claudio"]["pendientes"], 16.0)
+        self.assertEqual(saldos["Claudio"]["credito"], 24.0)
+        self.assertEqual(saldos["Claudio"]["gastado"], 24.0)
+        self.assertEqual(saldos["Claudio"]["restante"], 0.0)
         self.assertNotIn("Fernando", saldos)
 
     def test_saldos_compensacion_descuenta_csv(self) -> None:
@@ -1014,7 +1017,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(saldos["Alejandro"]["gastado"], 8.0)
         self.assertEqual(saldos["Alejandro"]["restante"], 16.0)
         self.assertEqual(saldos["Claudio"]["gastado"], 4.0)
-        self.assertEqual(saldos["Claudio"]["restante"], 8.0)
+        self.assertEqual(saldos["Claudio"]["restante"], 20.0)
         self.assertEqual(errores_saldos_compensacion(cfg, filas), [])
         filas_deuda = [{"horas_extras": "Alejandro:32:compensado"}]
         errores = errores_saldos_compensacion(cfg, filas_deuda)
@@ -1249,9 +1252,9 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         cfg = cargar_config()
         pendientes = parse_horas_pendientes(cfg)
         self.assertEqual(pendientes.get("Alejandro"), 16.0)
-        self.assertEqual(pendientes.get("Claudio"), 8.0)
+        self.assertEqual(pendientes.get("Claudio"), 16.0)
         self.assertEqual(pendientes.get("Fernando"), 16.0)
-        self.assertEqual(sum(pendientes.values()), 40.0)
+        self.assertEqual(sum(pendientes.values()), 48.0)
 
     def test_html_cuadrante_recuento_extras_y_cesantes(self) -> None:
         from generar_vista import generar_html
@@ -1276,7 +1279,7 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertIn("16 h", html)
         self.assertIn('id="compensacion-dias"', html)
         self.assertIn("Compensación", html)
-        self.assertIn("12 h restantes", html)
+        self.assertIn("0 h restantes", html)
         self.assertIn("Nombre:8:compensado", html)
         self.assertIn("Pendientes de pagar no se descuenta", html)
         self.assertIn("div.extras", html)
@@ -1460,6 +1463,8 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
 
     def test_compensado_excluye_de_generacion(self) -> None:
         cfg = cargar_config_validada()
+        # Crédito extra local para el marcado adicional del test (no toca config.yaml)
+        cfg.setdefault("horas_pendientes", {})["Claudio"] = 40.0
         generar_csv(cfg, congelar=False)
         filas = cargar_filas_csv()
         for fila in filas:

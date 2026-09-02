@@ -194,8 +194,8 @@ class TestPdfMes(unittest.TestCase):
         self.assertIn("Adrián", nombres)
         verificar_pdf_mes(datos, nombres_csv=nombres)
 
-    def test_pdf_septiembre_oculta_compensado(self) -> None:
-        """El PDF no muestra los chips «Compensado» (sí visibles en pantalla)."""
+    def test_pdf_septiembre_muestra_extras_y_oculta_compensado(self) -> None:
+        """El PDF muestra las horas extras (día 9: Claudio) y oculta los chips «Compensado»."""
         from playwright.sync_api import sync_playwright
 
         browser = self._playwright.chromium.launch()
@@ -214,12 +214,22 @@ class TestPdfMes(unittest.TestCase):
             const mes = document.querySelector('.mes.visible');
             const w = construirPdfMes(mes);
             document.body.appendChild(w);
-            const chips = [...w.querySelectorAll('.compensado')];
-            const visibles = chips.filter(c => getComputedStyle(c).display !== 'none').length;
+            const compensados = [...w.querySelectorAll('.compensado')];
+            const visiblesCompensado = compensados.filter(
+                c => getComputedStyle(c).display !== 'none'
+            ).length;
+            const dia9 = w.querySelector('[data-fecha="2026-09-09"]');
+            const extrasDia9 = [...dia9.querySelectorAll('.extra')].map(e => e.textContent.trim());
             w.remove();
-            return visibles;
+            return { visiblesCompensado, extrasDia9 };
         }""")
-        self.assertEqual(en_pdf, 0, "el PDF no debe mostrar chips de compensado")
+        self.assertEqual(
+            en_pdf["visiblesCompensado"], 0, "el PDF no debe mostrar chips de compensado"
+        )
+        self.assertTrue(
+            any("Claudio" in chip for chip in en_pdf["extrasDia9"]),
+            f"el día 9 debe mostrar a Claudio como extra en el PDF: {en_pdf['extrasDia9']}",
+        )
         browser.close()
 
 

@@ -962,7 +962,7 @@ def generar_html(
     }}
     .pdf-export .etiq-cubierta {{ font-size: 0.42rem; }}
     .pdf-export.mostrar-libres .libres {{ display: flex; }}
-    .pdf-export.mostrar-extras div.extras {{ display: flex; }}
+    .pdf-export div.extras {{ display: flex; }}
     .pdf-pagina {{
       width: 1040px; background: #fff;
     }}

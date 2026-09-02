@@ -22,7 +22,7 @@ periodo:
 # Horas extras aún no pagadas (editar a mano; se muestra en el cuadrante, no en agosto público):
 horas_pendientes:
   Alejandro: 16
-  Claudio: 8
+  Claudio: 16
   Fernando: 16
 
 # Alex y Claudio cobran extras en días libres (1 extra = 1,5 libres).
