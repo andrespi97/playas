@@ -193,6 +193,7 @@ def contar_socorristas_cesantes(
     *,
     sustitutos: list[str] | None = None,
     patron_solo_zodiac: list[str] | None = None,  # legacy no-op
+    extras_reales: set[str] | None = None,
 ) -> int:
     """Socorristas reales en el lado Cesantes (únicos; las vacantes no cuentan).
 
@@ -205,8 +206,14 @@ def contar_socorristas_cesantes(
     Si una vacante de Cesantes (no la del patrón) está cubierta por un
     extra/sustituto que no figura ya como nombre real, se cuenta el cubridor
     una vez (sin duplicar ni sumar extras de Chapela).
+
+    `extras_reales`: nombres que trabajan de extra en su día de libranza.
+    Un cubridor de vacante situado en puesto Chapela cuenta si es extra real
+    (presencia adicional ese día); si es plantilla en su turno, no (ya cuenta
+    como Chapela).
     """
     del patron_solo_zodiac
+    extras_reales = extras_reales or set()
     vistos: set[str] = set()
     resultado: list[str] = []
     patron = solo_nombre(fila.get("patron_cesantes", "").strip())
@@ -237,7 +244,9 @@ def contar_socorristas_cesantes(
                 continue
             if not cubridor or cubridor in vistos:
                 continue
-            if _en_puesto_chapela(fila, cubridor):
+            # Un extra de plantilla en puesto Chapela ya está contado ahí; un refuerzo
+            # de horas_extras (trabaja en su día libre) sí suma como presencia en Cesantes.
+            if _en_puesto_chapela(fila, cubridor) and cubridor not in extras_reales:
                 continue
             resultado.append(cubridor)
             vistos.add(cubridor)

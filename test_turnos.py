@@ -1322,8 +1322,9 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertRegex(html, r'data-fecha="2026-08-08"[^>]*data-cesantes="4"')
         # 4 ago: Robinson + Sergio (zodiac) + Rodrigo (torre)
         self.assertRegex(html, r'data-fecha="2026-08-04"[^>]*data-cesantes="3"')
-        # 6 ago: 5 socos Cesantes (patrón no cuenta)
-        self.assertRegex(html, r'data-fecha="2026-08-06"[^>]*data-cesantes="5"')
+        # 6 ago: 6 socos Cesantes (Sergio puesto + Robinson zodiac + Alejandro torre
+        # + Claudio + Rodrigo + Esther que cubre Vacante 2 siendo extra real)
+        self.assertRegex(html, r'data-fecha="2026-08-06"[^>]*data-cesantes="6"')
         # 11 jul: Robinson + Anxo + Claudio + Sergio (zodiac)
         self.assertRegex(html, r'data-fecha="2026-07-11"[^>]*data-cesantes="4"')
         # Ningún patrón en Zodiac

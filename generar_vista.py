@@ -482,7 +482,15 @@ def generar_html(
             vacaciones = vacaciones_por_fecha.get(fila["fecha"], [])
             extras = extras_por_fecha.get(fila["fecha"], {})
             compensado = compensado_por_fecha.get(fila["fecha"], {})
-            n_cesantes = contar_socorristas_cesantes(fila, sustitutos=sustitutos)
+            # Extras reales: anotados en horas_extras y en su día de libranza
+            # (los anotados en día de turno son ordinarios, p. ej. envíos de agosto)
+            extras_reales = {
+                n for n in extras
+                if n in libran.get(fila["fecha"], [])
+            }
+            n_cesantes = contar_socorristas_cesantes(
+                fila, sustitutos=sustitutos, extras_reales=extras_reales
+            )
             data_personas = html.escape(json.dumps(personas, ensure_ascii=False))
             data_libres = html.escape(json.dumps(libres, ensure_ascii=False))
             data_vacaciones = html.escape(json.dumps(vacaciones, ensure_ascii=False))
