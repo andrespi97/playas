@@ -566,7 +566,7 @@ def generar_html(
         }
         check_extras_html = """
       <label class="check-libres">
-        <input type="checkbox" id="mostrar-extras">
+        <input type="checkbox" id="mostrar-extras" checked>
         Mostrar horas extra
       </label>"""
         css_recuento = """
@@ -1226,6 +1226,9 @@ def generar_html(
         document.body.classList.toggle("mostrar-extras", checkExtras.checked);
         aplicarFiltro(filtro.value);
       }});
+      // Marcado por defecto: mostrar extras al cargar
+      checkExtras.checked = true;
+      document.body.classList.add("mostrar-extras");
     }}
 
     function activarMes(id) {{
@@ -1234,7 +1237,24 @@ def generar_html(
     }}
 
     tabs.forEach(t => t.addEventListener("click", () => activarMes(t.dataset.target)));
-    if (tabs.length) activarMes(tabs[0].dataset.target);
+
+    function activarMesPorDefecto() {{
+      if (!tabs.length) return;
+      // Mes en curso; si no está en el cuadrante (pasado o futuro), el más cercano anterior
+      const ahora = new Date();
+      const indiceMes = ahora.getFullYear() * 12 + ahora.getMonth();
+      const mesesDe = id => {{
+        const [y, m] = id.slice(4).split("-").map(Number);
+        return y * 12 + (m - 1);
+      }};
+      const candidatos = [...tabs].map(t => t.dataset.target);
+      let destino = candidatos[0];
+      for (const id of candidatos) {{
+        if (mesesDe(id) <= indiceMes) destino = id;
+      }}
+      activarMes(destino);
+    }}
+    activarMesPorDefecto();
 
     function aplicarFiltro(nombre) {{
       document.querySelectorAll(".dia:not(.vacio)").forEach(dia => {{

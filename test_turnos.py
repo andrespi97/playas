@@ -296,35 +296,52 @@ class TestRotacion4x2(unittest.TestCase):
         self.assertIn("Esther", parse_horas_extras(filas["2026-08-30"].get("horas_extras", "")))
         self.assertEqual(filas["2026-09-13"]["socorrista_chapela"], "Sergio")
         self.assertEqual(filas["2026-09-13"]["patron_chapela"], "Esther")
-        self.assertEqual(filas["2026-09-13"]["socorrista_zodiac"], "Rober")
-        self.assertEqual(filas["2026-09-13"]["abrir_torre"], "Anxo")
+        # Rober quitado a mano del 13 sep (fila bloqueada)
+        self.assertNotIn("Rober", nombres_asignados_dia(filas["2026-09-13"]))
+        self.assertNotIn("Anxo", nombres_asignados_dia(filas["2026-09-13"]))
 
-    def test_esther_extras_libres_septiembre(self) -> None:
-        """Esther trabaja de extra (patrón Chapela) los días que libra en septiembre."""
+    def test_esther_extras_libres_septiembre_solo_hasta_15(self) -> None:
+        """Esther cubre extra en sus libranzas de sep solo hasta el 15 (con extra anotada).
+
+        Desde el 16 sep sigue el 4/2 ordinario: trabaja sus bloques G1 sin extra,
+        y en sus libranzas (17-18, 23-24, 29-30) no aparece ni con extra.
+        """
         cfg = cargar_config_validada()
         rot = cfg["rotacion"]
         inicio = parse_fecha(cfg["periodo"]["inicio"])
         n = 0
         for fila in filas_csv():
             d = parse_fecha(fila["fecha"])
-            if d.month != 9:
+            if d.month != 9 or d.day > 15:
                 continue
             if trabaja_en_dia((d - inicio).days, 1, rot):
                 continue
             n += 1
             self.assertIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
             self.assertEqual(fila["patron_chapela"], "Esther", fila["fecha"])
-            self.assertEqual(fila["patron_cesantes"], "Adrián", fila["fecha"])
             self.assertEqual(
                 parse_horas_extras(fila.get("horas_extras", "")).get("Esther"),
                 8.0,
                 fila["fecha"],
             )
-            self.assertTrue(fila.get("socorrista_zodiac", "").strip(), fila["fecha"])
-        self.assertEqual(n, 10)
+        self.assertEqual(n, 4)
+        # Desde el 16 sep: sus libranzas sin extra y sin asignación
+        for fila in filas_csv():
+            d = parse_fecha(fila["fecha"])
+            if d.month != 9 or d.day < 16:
+                continue
+            if trabaja_en_dia((d - inicio).days, 1, rot):
+                # Días de trabajo G1: turno ordinario en Chapela, sin extra
+                self.assertIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
+                self.assertEqual(fila["patron_chapela"], "Esther", fila["fecha"])
+                self.assertNotIn("Esther", parse_horas_extras(fila.get("horas_extras", "")), fila["fecha"])
+            else:
+                self.assertNotIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
+                self.assertNotIn("Esther", parse_horas_extras(fila.get("horas_extras", "")), fila["fecha"])
 
     def test_fernando_extras_libres_septiembre_salvo_13(self) -> None:
-        """Fernando extra (soc. Chapela) los días que libra en septiembre, menos el 13."""
+        """Fernando: extra en libranzas hasta el 15; del 16 en adelante 4/2 ordinario,
+        excepto vacaciones 21-28 sep (cubiertas por Robinson/Claudio)."""
         cfg = cargar_config_validada()
         rot = cfg["rotacion"]
         inicio = parse_fecha(cfg["periodo"]["inicio"])
@@ -334,7 +351,21 @@ class TestRotacion4x2(unittest.TestCase):
             d = parse_fecha(fila["fecha"])
             if d.month != 9:
                 continue
+            en_vacaciones = "2026-09-21" <= fila["fecha"] <= "2026-09-28"
             if trabaja_en_dia((d - inicio).days, 1, rot):
+                if en_vacaciones:
+                    self.assertNotIn("Fernando", nombres_asignados_dia(fila), fila["fecha"])
+                    self.assertIn("Fernando", parse_lista_nombres(fila.get("vacaciones", "")), fila["fecha"])
+                    continue
+                if d.day >= 16:
+                    # Del 16 en adelante: turno ordinario (soc. Chapela), sin extra
+                    self.assertEqual(fila["socorrista_chapela"], "Fernando", fila["fecha"])
+                    self.assertNotIn("Fernando", parse_horas_extras(fila.get("horas_extras", "")), fila["fecha"])
+                continue
+            if d.day >= 16:
+                # Libranza del 16 en adelante: sin asignación ni extra
+                self.assertNotIn("Fernando", nombres_asignados_dia(fila), fila["fecha"])
+                self.assertNotIn("Fernando", parse_horas_extras(fila.get("horas_extras", "")), fila["fecha"])
                 continue
             n += 1
             self.assertEqual(fila["socorrista_chapela"], "Fernando", fila["fecha"])
@@ -343,7 +374,7 @@ class TestRotacion4x2(unittest.TestCase):
                 8.0,
                 fila["fecha"],
             )
-        self.assertEqual(n, 10)
+        self.assertEqual(n, 4)
         self.assertNotIn("Fernando", nombres_asignados_dia(filas["2026-09-13"]))
         self.assertNotIn(
             "Fernando", parse_horas_extras(filas["2026-09-13"].get("horas_extras", ""))
@@ -1300,8 +1331,8 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             html,
             r'data-campo="socorrista_zodiac" data-persona="Adrián"',
         )
-        self.assertIn('data-fecha="2026-09-15"', html)
-        self.assertNotIn('data-fecha="2026-09-16"', html)
+        self.assertIn('data-fecha="2026-09-30"', html)
+        self.assertNotIn('data-fecha="2026-10-01"', html)
 
     def test_csv_conserva_dias_tras_vista_hasta(self) -> None:
         fechas = {f["fecha"] for f in cargar_filas_csv()}
@@ -1386,9 +1417,10 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
             next(f for f in filas if f["fecha"] == "2026-07-09")["vacaciones"],
             "Esther",
         )
+        # 1 manual (9 jul) + vacaciones reales de Fernando (21-28 sep)
         self.assertEqual(
             sum(1 for f in filas if f.get("vacaciones")),
-            1,
+            9,
             "solo debe haber vacaciones donde se pusieron a mano",
         )
 
@@ -1598,11 +1630,11 @@ class TestConfig(unittest.TestCase):
         personas = construir_personas(cfg)
         soc = [p for p in personas if p.rol == "socorrista"]
         pat = [p for p in personas if p.rol == "patron"]
-        self.assertEqual(len(soc), 12)
+        self.assertEqual(len(soc), 13)
         self.assertEqual(len(pat), 4)
-        self.assertEqual(len(personas), 16)
+        self.assertEqual(len(personas), 17)
         nombres = {p.nombre for p in soc}
-        self.assertTrue({"Rober", "Aaron"} <= nombres)
+        self.assertTrue({"Rober", "Aaron", "Diego"} <= nombres)
         vacantes = [p.nombre for p in personas if p.nombre.startswith("Vacante")]
         self.assertEqual(sorted(vacantes), ["Vacante 1", "Vacante 2", "Vacante 3"])
 

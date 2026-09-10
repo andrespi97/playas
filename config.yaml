@@ -5,7 +5,7 @@ periodo:
   inicio: "2026-07-01"
   fin: "2026-09-30"
   # HTML: no mostrar días posteriores. El CSV sigue hasta fin (no borrar).
-  vista_hasta: "2026-09-15"
+  vista_hasta: "2026-09-30"
 
 # Días que no se recalculan al ejecutar generar_turnos.py
 # - pasado_automatico: conserva hoy y días anteriores (por defecto true)
@@ -37,12 +37,13 @@ congelado:
   pasado_automatico: true
   hasta: "2026-07-03"
 
-# 4 días trabajan, 2 libran. 3 grupos desfasados.
+# 4 días trabajan, 2 libran. 4 grupos desfasados.
 # Grupo 1 (Esther) desfase 4 → libra el 1 de julio.
+# Grupo 4 (Diego) empieza a trabajar el 10 sep (jue-dom) y repite ciclo.
 rotacion:
   dias_trabajo: 4
   dias_libres: 2
-  desfase_grupos: [4, 0, 2]  # grupo 1, 2, 3
+  desfase_grupos: [4, 0, 2, 1]  # grupo 1, 2, 3, 4
 
 # Grupo 1: Esther (pat) + Fernando + Vacante 1
 # Grupo 2: Adrián (pat) + Claudio + Alex + Vacante 2
@@ -58,16 +59,17 @@ socorristas:
   - { nombre: "Claudio Pazos González", grupo: 2 }
   - { nombre: "Alejandro Panadeiros Covelo", grupo: 2 }
   - { nombre: "Vacante 2", grupo: 2 }
-  - { nombre: "Anxo", grupo: 2 }
+  - { nombre: "Anxo", grupo: 2, hasta: "2026-08-31" }
   - { nombre: "Robinson Ubaldo Rodríguez De Jesús", grupo: 3 }
   - { nombre: "Sergio Amoedo Domínguez", grupo: 3 }
   - { nombre: "Rodrigo", grupo: 3, hasta: "2026-09-03" }
+  - { nombre: "Diego", grupo: 4, desde: "2026-09-10" }
 
 patrones:
   - { nombre: "Esther Román Figueroa", grupo: 1 }
   - { nombre: "Adrián Bouzón Amoedo", grupo: 2 }
   # - { nombre: "Raúl", grupo: 2 }  # fuera de momento
-  - { nombre: "Anxo", grupo: 2 }
+  - { nombre: "Anxo", grupo: 2, hasta: "2026-08-31" }
   - { nombre: "Vacante 3", grupo: 3 }
 
 # De baja: no entran en rotación; su hueco es la vacante del mismo grupo
