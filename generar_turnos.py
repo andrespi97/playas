@@ -36,6 +36,8 @@ from turnos_common import (
     parse_compensacion,
     parse_lista_nombres,
     errores_saldos_compensacion,
+    cargar_filas_csv,
+    deficit_minimos,
     sin_vacantes_roster,
     solo_nombre,
     es_nombre_vacante,
@@ -1656,6 +1658,17 @@ def main(argv: list[str] | None = None) -> int:
         print("  Sin congelación: se recalculó todo el periodo")
     if n_cong and n_cong != n:
         print(f"  {n - n_cong} día(s) recalculados")
+
+    # Aviso informativo: días bajo mínimos (Chapela 2 / Cesantes 3). No bloquea el CSV;
+    # se publican en rojo en el HTML. Suele significar que hay que pedir extra a mano.
+    minimos_aviso = 0
+    filas_generadas = cargar_filas_csv(out)
+    for fila in filas_generadas:
+        if aviso := deficit_minimos(fila, cfg):
+            print(f"  ⚠ {fila['fecha']}: {aviso}", file=sys.stderr)
+            minimos_aviso += 1
+    if minimos_aviso:
+        print(f"  ⚠ {minimos_aviso} día(s) bajo mínimos (marcados en rojo en el HTML)", file=sys.stderr)
 
     try:
         from generar_vista import main as generar_vista_main

@@ -147,6 +147,10 @@ sustitutos:
   # - "Raúl"
 
 preferencias:
+  # Mínimos de seguridad por playa: si un día no se alcanzan, se marca en rojo
+  # en el HTML (hay que pedir extra a mano).
+  minimo_chapela: 2
+  minimo_cesantes: 3
   # G1 trabaja (4/2): Esther patrón Chapela + Fernando socorrista Chapela.
   # G1 libra (2 días): no se asignan; si van de extra, edítalos a mano (puesto + horas_extras).
   patron_chapela:

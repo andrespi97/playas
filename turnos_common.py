@@ -340,6 +340,58 @@ def saldos_compensacion(
     )
 
 
+def minimos_personal(cfg: dict | None) -> tuple[int, int]:
+    """Mínimos por playa desde config.yaml (preferencias): (chapela, cesantes)."""
+    prefs = (cfg or {}).get("preferencias") or {}
+    try:
+        chapela = int(prefs.get("minimo_chapela", 2))
+    except (TypeError, ValueError):
+        chapela = 2
+    try:
+        cesantes = int(prefs.get("minimo_cesantes", 3))
+    except (TypeError, ValueError):
+        cesantes = 3
+    return max(0, chapela), max(0, cesantes)
+
+
+def _contar_en_puesto_chapela(fila: dict[str, str]) -> int:
+    vistos: set[str] = set()
+    for campo in ("socorrista_chapela", "patron_chapela"):
+        sn = solo_nombre(fila.get(campo, "").strip())
+        if sn and es_nombre_vacante(sn):
+            continue
+        if sn and sn not in vistos:
+            vistos.add(sn)
+    return len(vistos)
+
+
+def deficit_minimos(
+    fila: dict[str, str],
+    cfg: dict | None = None,
+    *,
+    n_cesantes: int | None = None,
+    n_chapela: int | None = None,
+) -> str | None:
+    """Mensaje si el día queda bajo mínimos; None si se cumple.
+
+    n_cesantes: resultado de contar_socorristas_cesantes (con zodiac/torre/cubridores).
+    n_chapela: personas reales en patrón+socorrista Chapela.
+    """
+    min_ch, min_ces = minimos_personal(cfg)
+    if n_cesantes is None:
+        n_cesantes = contar_socorristas_cesantes(fila)
+    if n_chapela is None:
+        n_chapela = _contar_en_puesto_chapela(fila)
+    faltan: list[str] = []
+    if n_chapela < min_ch:
+        faltan.append(f"Chapela {n_chapela}/{min_ch}")
+    if n_cesantes < min_ces:
+        faltan.append(f"Cesantes {n_cesantes}/{min_ces}")
+    if not faltan:
+        return None
+    return "Bajo mínimo: " + ", ".join(faltan)
+
+
 def errores_saldos_compensacion(
     cfg: dict | None,
     filas: list[dict[str, str]],

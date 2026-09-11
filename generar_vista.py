@@ -35,6 +35,7 @@ from turnos_common import (
     cubridores_vacantes_fila,
     sin_vacantes_roster,
     solo_nombre,
+    deficit_minimos,
 )
 
 MESES = (
@@ -511,12 +512,15 @@ def generar_html(
                 f'<span class="ces-n" title="{n_cesantes} en Cesantes">'
                 f"{n_cesantes} Ces.</span>"
             )
+            aviso_min = deficit_minimos(fila, cfg, n_cesantes=n_cesantes)
+            clase_deficit = ' class="dia deficit"' if aviso_min else ""
+            titulo_deficit = f' title="{html.escape(aviso_min)}"' if aviso_min else ""
             celdas.append(
-                f'<article class="dia" data-fecha="{fila["fecha"]}" '
+                f'<article{clase_deficit} data-fecha="{fila["fecha"]}" '
                 f'data-cesantes="{n_cesantes}" '
                 f"data-personas='{data_personas}' data-libres='{data_libres}' "
                 f"data-vacaciones='{data_vacaciones}' data-extras='{data_extras}' "
-                f"data-compensado='{data_compensado}'>"
+                f"data-compensado='{data_compensado}'{titulo_deficit}>"
                 f'<header class="dia-cab"><span class="num">{d.day}</span>'
                 f"{ces_txt}"
                 f'<span class="sem">{DIAS_SEM[d.weekday()]}</span></header>'
@@ -827,6 +831,13 @@ def generar_html(
     }}
     .dia.resaltado {{ border-color: var(--resalt-borde); background: var(--resalt); }}
     .dia.atenuado {{ opacity: 0.35; }}
+    .dia.deficit {{
+      border-color: #dc2626; border-width: 2px; background: #fef2f2;
+    }}
+    .dia.deficit .dia-cab .ces-n {{
+      color: #fff; background: #dc2626; border-color: #dc2626;
+    }}
+    .leyenda .aviso-deficit strong {{ color: #dc2626; }}
     .puesto.resaltado {{ outline: 2px solid var(--sol); background: #fffbeb; }}
     .libres {{
       display: none; flex-direction: column; gap: 2px;
@@ -1032,6 +1043,7 @@ def generar_html(
     {bloque_compensacion}
     {"".join(bloques_mes)}
     <div class="leyenda">
+      <span class="aviso-deficit"><strong>Bajo mínimo</strong> · día en rojo: pedir extra (mín. 2 Chapela, 3 Cesantes)</span>
       <span><strong>Chapela</strong> · playa Chapela (verde) · 🔑 lleva llave</span>
       <span><strong>Cesantes</strong> · playa Cesantes (gris)</span>
       <span><strong>Abrir puesto</strong> · cesantes · 🔑</span>

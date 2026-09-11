@@ -61,6 +61,8 @@ from turnos_common import (  # noqa: E402
     parse_compensacion,
     saldos_compensacion,
     errores_saldos_compensacion,
+    deficit_minimos,
+    minimos_personal,
     solo_nombre,
     sustitutos_presentes_fila,
 )
@@ -190,6 +192,63 @@ class TestCoberturaExtendida(unittest.TestCase):
                 4,
             )
         )
+
+
+class TestMinimosPersonal(unittest.TestCase):
+    def test_minimos_desde_config(self) -> None:
+        self.assertEqual(minimos_personal({"preferencias": {"minimo_chapela": 2, "minimo_cesantes": 3}}), (2, 3))
+        self.assertEqual(minimos_personal(None), (2, 3))
+        self.assertEqual(minimos_personal({"preferencias": {}}), (2, 3))
+        self.assertEqual(minimos_personal({"preferencias": {"minimo_chapela": "x"}}), (2, 3))
+        self.assertEqual(minimos_personal({"preferencias": {"minimo_cesantes": 0}}), (2, 0))
+
+    def test_deficit_cesantes_y_chapela(self) -> None:
+        fila = {
+            "socorrista_chapela": "Fernando",
+            "patron_chapela": "Esther",
+            "patron_cesantes": "Adrián",
+            "llave_cesantes": "Sergio",
+        }
+        self.assertEqual(deficit_minimos(fila), "Bajo mínimo: Cesantes 1/3")
+        self.assertIsNone(deficit_minimos(fila, n_cesantes=3))
+
+    def test_deficit_chapela_con_vacantes(self) -> None:
+        fila = {
+            "socorrista_chapela": "Vacante 1",
+            "patron_chapela": "Esther",
+            "llave_cesantes": "Sergio",
+            "socorrista_zodiac": "Claudio",
+        }
+        # Solo Esther es real en Chapela; en Cesantes: Sergio + Claudio (2/3)
+        self.assertEqual(deficit_minimos(fila), "Bajo mínimo: Chapela 1/2, Cesantes 2/3")
+
+    def test_dia_cumple_minimos_sin_aviso(self) -> None:
+        fila = {
+            "socorrista_chapela": "Fernando",
+            "patron_chapela": "Esther",
+            "patron_cesantes": "Adrián",
+            "llave_cesantes": "Sergio",
+            "socorrista_zodiac": "Claudio",
+            "abrir_torre": "Robinson",
+        }
+        self.assertIsNone(deficit_minimos(fila))
+
+    def test_csv_sin_dias_bajo_minimos_en_dias_con_personal_suficiente(self) -> None:
+        cfg = cargar_config_validada()
+        personas = construir_personas(cfg)
+        rot = cfg["rotacion"]
+        for fila in filas_csv():
+            if celda_bloqueada(fila.get("bloqueado", "")):
+                continue
+            fecha_str = fila["fecha"]
+            ausentes = nombres_completos_ausentes(
+                fila.get("vacaciones", ""), personas, fila.get("horas_extras", "")
+            ) | ausentes_por_disponibilidad(cfg, fecha_str, personas) | ausentes_por_hasta(cfg, fecha_str)
+            dia_idx = (parse_fecha(fecha_str) - parse_fecha(cfg["periodo"]["inicio"])).days
+            n = contar_socorristas_trabajando(personas, dia_idx, rot, ausentes, cfg, fecha_str)
+            aviso = deficit_minimos(fila, cfg)
+            if n + 2 >= 5:  # chapela(2) + cesantes(3) requiere 5 personas
+                self.assertIsNone(aviso, f"{fecha_str} ({n} socorristas): {aviso}")
 
 
 class TestRotacion4x2(unittest.TestCase):
