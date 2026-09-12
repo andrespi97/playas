@@ -235,10 +235,8 @@ class TestPdfMes(unittest.TestCase):
             )
         browser.close()
 
-    def test_pdf_septiembre_muestra_extras_y_oculta_compensado(self) -> None:
-        """El PDF muestra las horas extras (día 9: Claudio) y oculta los chips «Compensado»."""
-        from playwright.sync_api import sync_playwright
-
+    def test_pdf_solo_muestra_puestos(self) -> None:
+        """El PDF solo incluye puestos cubiertos, sin extras, vacaciones ni compensado."""
         browser = self._playwright.chromium.launch()
         page = browser.new_page()
         page.goto(self._url, wait_until="networkidle", timeout=60_000)
@@ -248,29 +246,34 @@ class TestPdfMes(unittest.TestCase):
         )
         page.click('.tab-mes[data-target="mes-2026-09"]')
         en_pantalla = page.evaluate(
-            "document.querySelectorAll('#mes-2026-09 .compensado').length"
+            """() => ({
+                extras: document.querySelectorAll('#mes-2026-09 .extra').length,
+                compensado: document.querySelectorAll('#mes-2026-09 .compensado').length,
+            })"""
         )
-        self.assertGreater(en_pantalla, 0, "septiembre debe tener compensados en pantalla")
+        self.assertGreater(en_pantalla["extras"], 0, "septiembre debe tener extras en pantalla")
+        self.assertGreater(
+            en_pantalla["compensado"], 0, "septiembre debe tener compensados en pantalla"
+        )
         en_pdf = page.evaluate("""() => {
             const mes = document.querySelector('.mes.visible');
             const w = construirPdfMes(mes);
-            document.body.appendChild(w);
-            const compensados = [...w.querySelectorAll('.compensado')];
-            const visiblesCompensado = compensados.filter(
-                c => getComputedStyle(c).display !== 'none'
-            ).length;
             const dia9 = w.querySelector('[data-fecha="2026-09-09"]');
-            const extrasDia9 = [...dia9.querySelectorAll('.extra')].map(e => e.textContent.trim());
-            w.remove();
-            return { visiblesCompensado, extrasDia9 };
+            return {
+                extras: w.querySelectorAll('.extra').length,
+                vacaciones: w.querySelectorAll('.vacacion').length,
+                compensado: w.querySelectorAll('.compensado').length,
+                libres: w.querySelectorAll('.libre').length,
+                puestos: w.querySelectorAll('.puesto').length,
+                puestosDia9: dia9 ? dia9.querySelectorAll('.puesto').length : 0,
+            };
         }""")
-        self.assertEqual(
-            en_pdf["visiblesCompensado"], 0, "el PDF no debe mostrar chips de compensado"
-        )
-        self.assertTrue(
-            any("Claudio" in chip for chip in en_pdf["extrasDia9"]),
-            f"el día 9 debe mostrar a Claudio como extra en el PDF: {en_pdf['extrasDia9']}",
-        )
+        self.assertGreater(en_pdf["puestos"], 0, "el PDF debe mostrar puestos")
+        self.assertGreater(en_pdf["puestosDia9"], 0, "el día 9 debe conservar puestos")
+        self.assertEqual(en_pdf["extras"], 0, "el PDF no debe mostrar horas extras")
+        self.assertEqual(en_pdf["vacaciones"], 0, "el PDF no debe mostrar vacaciones")
+        self.assertEqual(en_pdf["compensado"], 0, "el PDF no debe mostrar compensado")
+        self.assertEqual(en_pdf["libres"], 0, "el PDF no debe mostrar libres")
         browser.close()
 
 

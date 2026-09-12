@@ -958,11 +958,7 @@ def generar_html(
     }}
     .pdf-export .dia-cab .sem {{ font-size: 0.5rem; }}
 {css_pdf_recuento}
-    .pdf-export .puestos,
-    .pdf-export .libres,
-    .pdf-export .vacaciones,
-    .pdf-export .compensaciones,
-    .pdf-export div.extras {{
+    .pdf-export .puestos {{
       overflow: visible !important; flex: none !important;
       gap: 1px;
     }}
@@ -970,18 +966,13 @@ def generar_html(
       font-size: 0.48rem; line-height: 1.12; padding: 1px 2px;
       border-radius: 2px;
     }}
-    .pdf-export .libre,
-    .pdf-export .vacacion,
-    .pdf-export .extra {{
-      font-size: 0.45rem; line-height: 1.12; padding: 1px 2px;
-    }}
+    .pdf-export .libres,
+    .pdf-export .vacaciones,
     .pdf-export .compensaciones,
-    .pdf-export .compensado {{
-      display: none;
+    .pdf-export div.extras {{
+      display: none !important;
     }}
     .pdf-export .etiq-cubierta {{ font-size: 0.42rem; }}
-    .pdf-export.mostrar-libres .libres {{ display: flex; }}
-    .pdf-export div.extras {{ display: flex; }}
     .pdf-pagina {{
       width: 1040px; background: #fff;
     }}
@@ -1078,15 +1069,15 @@ def generar_html(
     const PDF_SCALE = 2;
     const SEMANAS_POR_PAGINA = 2;
 
+    function limpiarDiaPdf(dia) {{
+      dia.querySelectorAll(".libres, .vacaciones, .compensaciones, .extras").forEach(el => {{
+        el.remove();
+      }});
+    }}
+
     function construirPdfMes(mes) {{
       const wrapper = document.createElement("div");
       wrapper.className = "pdf-export";
-      if (document.body.classList.contains("mostrar-libres")) {{
-        wrapper.classList.add("mostrar-libres");
-      }}
-      if (document.body.classList.contains("mostrar-extras")) {{
-        wrapper.classList.add("mostrar-extras");
-      }}
 
       const etiquetaMes = mes.querySelector("h2")?.textContent?.trim() || mes.id;
       const cab = document.createElement("header");
@@ -1119,6 +1110,7 @@ def generar_html(
         for (let j = i; j < Math.min(i + 7, dias.length); j++) {{
           const dia = dias[j].cloneNode(true);
           dia.classList.remove("atenuado", "resaltado", "libre-resaltado");
+          limpiarDiaPdf(dia);
           grid.appendChild(dia);
         }}
         semana.appendChild(grid);
@@ -1199,12 +1191,6 @@ def generar_html(
         for (let i = 0; i < semanas.length; i += SEMANAS_POR_PAGINA) {{
           const pagina = document.createElement("div");
           pagina.className = "pdf-export pdf-pagina";
-          if (document.body.classList.contains("mostrar-libres")) {{
-            pagina.classList.add("mostrar-libres");
-          }}
-          if (document.body.classList.contains("mostrar-extras")) {{
-            pagina.classList.add("mostrar-extras");
-          }}
           if (numPagina === 0) {{
             if (cabecera) pagina.appendChild(cabecera.cloneNode(true));
             if (tituloMes) pagina.appendChild(tituloMes.cloneNode(true));
