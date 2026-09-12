@@ -194,6 +194,47 @@ class TestPdfMes(unittest.TestCase):
         self.assertIn("Adrián", nombres)
         verificar_pdf_mes(datos, nombres_csv=nombres)
 
+    def test_construir_pdf_mes_incluye_todos_los_dias(self) -> None:
+        """Cada día del mes visible debe copiarse al DOM de exportación PDF."""
+        browser = self._playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(self._url, wait_until="networkidle", timeout=60_000)
+        page.wait_for_function(
+            "() => typeof construirPdfMes === 'function'",
+            timeout=30_000,
+        )
+        for mes_id, esperados in (
+            ("mes-2026-07", 31),
+            ("mes-2026-08", 31),
+            ("mes-2026-09", 30),
+        ):
+            page.click(f'.tab-mes[data-target="{mes_id}"]')
+            total = page.evaluate(
+                f"""() => {{
+                    const mes = document.querySelector("#{mes_id}");
+                    const origen = mes.querySelectorAll(
+                        '.rejilla > article[data-fecha], .rejilla > .dia:not(.vacio)'
+                    ).length;
+                    const w = construirPdfMes(mes);
+                    const copiados = w.querySelectorAll(
+                        '.rejilla > article[data-fecha], .rejilla > .dia:not(.vacio)'
+                    ).length;
+                    w.remove();
+                    return {{ origen, copiados }};
+                }}"""
+            )
+            self.assertEqual(
+                total["origen"],
+                esperados,
+                f"{mes_id}: el HTML debe tener {esperados} días",
+            )
+            self.assertEqual(
+                total["copiados"],
+                total["origen"],
+                f"{mes_id}: construirPdfMes omitió días",
+            )
+        browser.close()
+
     def test_pdf_septiembre_muestra_extras_y_oculta_compensado(self) -> None:
         """El PDF muestra las horas extras (día 9: Claudio) y oculta los chips «Compensado»."""
         from playwright.sync_api import sync_playwright

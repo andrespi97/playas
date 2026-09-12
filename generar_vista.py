@@ -513,10 +513,10 @@ def generar_html(
                 f"{n_cesantes} Ces.</span>"
             )
             aviso_min = deficit_minimos(fila, cfg, n_cesantes=n_cesantes)
-            clase_deficit = ' class="dia deficit"' if aviso_min else ""
+            clase_dia = ' class="dia deficit"' if aviso_min else ' class="dia"'
             titulo_deficit = f' title="{html.escape(aviso_min)}"' if aviso_min else ""
             celdas.append(
-                f'<article{clase_deficit} data-fecha="{fila["fecha"]}" '
+                f'<article{clase_dia} data-fecha="{fila["fecha"]}" '
                 f'data-cesantes="{n_cesantes}" '
                 f"data-personas='{data_personas}' data-libres='{data_libres}' "
                 f"data-vacaciones='{data_vacaciones}' data-extras='{data_extras}' "
@@ -1099,7 +1099,7 @@ def generar_html(
       wrapper.appendChild(titulo);
 
       const diasSemana = [...mes.querySelectorAll(".cab-sem span")].map(s => s.textContent);
-      const dias = [...mes.querySelectorAll(".rejilla > .dia")];
+      const dias = [...mes.querySelectorAll(".rejilla > .dia, .rejilla > article[data-fecha]")];
 
       for (let i = 0; i < dias.length; i += 7) {{
         const semana = document.createElement("div");
