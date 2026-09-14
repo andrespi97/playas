@@ -1087,18 +1087,21 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertEqual(factor, 1.5)
         self.assertEqual(personas, frozenset({"Alejandro", "Claudio"}))
         saldos = {s["nombre"]: s for s in saldos_compensacion(cfg, cargar_filas_csv())}
-        self.assertEqual(saldos["Alejandro"]["pendientes"], 16.0)
+        # Pendientes saldados: crédito = histórico disfrutado, restante 0.
+        self.assertEqual(saldos["Alejandro"]["pendientes"], 0.0)
         self.assertEqual(saldos["Alejandro"]["credito"], 24.0)
         self.assertEqual(saldos["Alejandro"]["gastado"], 24.0)
         self.assertEqual(saldos["Alejandro"]["restante"], 0.0)
-        self.assertEqual(saldos["Claudio"]["pendientes"], 16.0)
-        self.assertEqual(saldos["Claudio"]["credito"], 24.0)
-        self.assertEqual(saldos["Claudio"]["gastado"], 24.0)
+        self.assertEqual(saldos["Claudio"]["pendientes"], 0.0)
+        self.assertEqual(saldos["Claudio"]["credito"], 32.0)
+        self.assertEqual(saldos["Claudio"]["gastado"], 32.0)
         self.assertEqual(saldos["Claudio"]["restante"], 0.0)
         self.assertNotIn("Fernando", saldos)
+        self.assertEqual(errores_saldos_compensacion(cfg, cargar_filas_csv()), [])
 
     def test_saldos_compensacion_descuenta_csv(self) -> None:
-        cfg = cargar_config()
+        cfg = dict(cargar_config())
+        cfg["horas_pendientes"] = {"Alejandro": 16, "Claudio": 16}
         filas = [
             {"horas_extras": "Alejandro:8:compensado"},
             {"horas_extras": "Claudio:4:compensado; Fernando:8"},
@@ -1341,10 +1344,11 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
 
         cfg = cargar_config()
         pendientes = parse_horas_pendientes(cfg)
-        self.assertEqual(pendientes.get("Alejandro"), 16.0)
-        self.assertEqual(pendientes.get("Claudio"), 16.0)
-        self.assertEqual(pendientes.get("Fernando"), 16.0)
-        self.assertEqual(sum(pendientes.values()), 48.0)
+        self.assertEqual(pendientes, {})
+        self.assertEqual(
+            parse_horas_pendientes({"horas_pendientes": {"Alejandro": 8, "Claudio": 0}}),
+            {"Alejandro": 8.0},
+        )
 
     def test_html_cuadrante_recuento_extras_y_cesantes(self) -> None:
         from generar_vista import generar_html
@@ -1363,10 +1367,8 @@ class TestAdministracion(CsvBackupMixin, unittest.TestCase):
         self.assertIn("<summary>", html)
         self.assertIn("Horas extras · Julio 2026", html)
         self.assertIn('class="tabla-extras"', html)
-        self.assertIn('id="pendientes-pagar"', html)
-        self.assertIn("Pendientes de pagar", html)
-        self.assertIn("Fernando", html)
-        self.assertIn("16 h", html)
+        self.assertNotIn('id="pendientes-pagar"', html)
+        self.assertNotIn("Pendientes de pagar ·", html)
         self.assertIn('id="compensacion-dias"', html)
         self.assertIn("Compensación", html)
         self.assertIn("0 h restantes", html)

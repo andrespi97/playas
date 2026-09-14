@@ -19,11 +19,9 @@ periodo:
 #   horas_extras — Nombre:horas; Nombre:horas:compensado (solo manual)
 #                  :compensado = no viene; gasta crédito de compensación (×1,5)
 #   bloqueado    — 1 o x: la fila no se toca jamás al regenerar
-# Horas extras aún no pagadas (editar a mano; se muestra en el cuadrante, no en agosto público):
-horas_pendientes:
-  Alejandro: 16
-  Claudio: 16
-  Fernando: 16
+# Horas extras aún no pagadas (editar a mano; se muestra en el cuadrante, no en agosto público).
+# Vacío: Alex/Claudio las disfrutaron en compensación; Fernando ya cobró.
+horas_pendientes: {}
 
 # Alex y Claudio cobran extras en días libres (1 extra = 1,5 libres).
 # Pendientes de pagar no se descuenta: el CSV Nombre:8:compensado gasta el crédito.

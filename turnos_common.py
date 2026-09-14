@@ -323,8 +323,12 @@ def saldos_compensacion(
     resultado: list[dict[str, float | str]] = []
     for nombre in personas:
         pend = float(pendientes.get(nombre, 0.0))
-        credito = pend * factor
         gastado = float(usado.get(nombre, 0.0))
+        credito = pend * factor
+        # Sin pendientes: deuda saldada (cobrada o disfrutada). El histórico
+        # :compensado no exige crédito vigente.
+        if pend <= 0:
+            credito = gastado
         resultado.append(
             {
                 "nombre": nombre,
