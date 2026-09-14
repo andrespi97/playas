@@ -78,7 +78,7 @@ fecha,socorrista_chapela,patron_chapela,llave_chapela,patron_cesantes,socorrista
 2026-09-15,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Rober,,,1
 2026-09-16,Fernando,Esther,Esther,Vacante 3,,Sergio,Robinson,Diego; Vacante 1,,,
 2026-09-17,Robinson,Adrián,Adrián,Vacante 3,,Sergio,Claudio,Alejandro; Vacante 2,,,1
-2026-09-18,Robinson,Adrián,Adrián,Vacante 3,,Sergio,Claudio,Alejandro; Vacante 2,,,1
+2026-09-18,Robinson,Adrián,Adrián,Vacante 3,,Diego,Claudio,Alejandro; Vacante 2,,,1
 2026-09-19,Fernando,Esther,Esther,Vacante 3,Alejandro,Diego,Claudio,Vacante 1; Vacante 2,,,
 2026-09-20,Fernando,Esther,Esther,Adrián,Claudio,Alejandro,,Diego; Vacante 1; Vacante 2,,,1
 2026-09-21,Robinson,Esther,Esther,Vacante 3,,Sergio,,Diego; Rober; Vacante 1,Fernando,,1
@@ -89,5 +89,5 @@ fecha,socorrista_chapela,patron_chapela,llave_chapela,patron_cesantes,socorrista
 2026-09-26,Claudio,Esther,Esther,Adrián,,Alejandro,,Diego; Vacante 1; Vacante 2,Fernando,,1
 2026-09-27,Robinson,Esther,Esther,Adrián,,Sergio,,Diego; Vacante 1,Fernando,,1
 2026-09-28,Robinson,Esther,Esther,Vacante 3,,Sergio,Diego,Rober; Vacante 1,Fernando,,1
-2026-09-29,Robinson,Adrián,Adrián,Vacante 3,,Sergio,Claudio,Alejandro; Diego; Rober; Vacante 2,,,1
+2026-09-29,Robinson,Adrián,Adrián,Vacante 3,,Sergio,Claudio,Alejandro; Rober; Vacante 2,,,1
 2026-09-30,Robinson,Adrián,Adrián,Vacante 3,,Alejandro,Claudio,Diego,,,1
