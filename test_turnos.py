@@ -359,23 +359,31 @@ class TestRotacion4x2(unittest.TestCase):
         self.assertNotIn("Rober", nombres_asignados_dia(filas["2026-09-13"]))
         self.assertNotIn("Anxo", nombres_asignados_dia(filas["2026-09-13"]))
 
-    def test_esther_extras_libres_septiembre_solo_hasta_15(self) -> None:
-        """Esther cubre extra en sus libranzas de sep solo hasta el 15 (con extra anotada).
+    def test_esther_extras_libres_septiembre(self) -> None:
+        """Esther cubre extra en libranzas de sep (salvo 17-18, ya pasados sin extra).
 
-        Desde el 16 sep sigue el 4/2 ordinario: trabaja sus bloques G1 sin extra,
-        y en sus libranzas (17-18, 23-24, 29-30) no aparece ni con extra.
+        Bloques G1 de trabajo: turno ordinario en Chapela, sin marcar extra.
+        Libranzas con extra: 5-6, 11-12 y 23-24, 29-30.
         """
         cfg = cargar_config_validada()
         rot = cfg["rotacion"]
         inicio = parse_fecha(cfg["periodo"]["inicio"])
-        n = 0
+        sin_extra = {"2026-09-17", "2026-09-18"}
+        n_extra = 0
         for fila in filas_csv():
             d = parse_fecha(fila["fecha"])
-            if d.month != 9 or d.day > 15:
+            if d.month != 9:
                 continue
             if trabaja_en_dia((d - inicio).days, 1, rot):
+                self.assertIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
+                self.assertEqual(fila["patron_chapela"], "Esther", fila["fecha"])
+                self.assertNotIn("Esther", parse_horas_extras(fila.get("horas_extras", "")), fila["fecha"])
                 continue
-            n += 1
+            if fila["fecha"] in sin_extra:
+                self.assertNotIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
+                self.assertNotIn("Esther", parse_horas_extras(fila.get("horas_extras", "")), fila["fecha"])
+                continue
+            n_extra += 1
             self.assertIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
             self.assertEqual(fila["patron_chapela"], "Esther", fila["fecha"])
             self.assertEqual(
@@ -383,20 +391,7 @@ class TestRotacion4x2(unittest.TestCase):
                 8.0,
                 fila["fecha"],
             )
-        self.assertEqual(n, 4)
-        # Desde el 16 sep: sus libranzas sin extra y sin asignación
-        for fila in filas_csv():
-            d = parse_fecha(fila["fecha"])
-            if d.month != 9 or d.day < 16:
-                continue
-            if trabaja_en_dia((d - inicio).days, 1, rot):
-                # Días de trabajo G1: turno ordinario en Chapela, sin extra
-                self.assertIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
-                self.assertEqual(fila["patron_chapela"], "Esther", fila["fecha"])
-                self.assertNotIn("Esther", parse_horas_extras(fila.get("horas_extras", "")), fila["fecha"])
-            else:
-                self.assertNotIn("Esther", nombres_asignados_dia(fila), fila["fecha"])
-                self.assertNotIn("Esther", parse_horas_extras(fila.get("horas_extras", "")), fila["fecha"])
+        self.assertEqual(n_extra, 8)
 
     def test_fernando_extras_libres_septiembre_salvo_13(self) -> None:
         """Fernando: extra en libranzas hasta el 15; del 16 en adelante 4/2 ordinario,
